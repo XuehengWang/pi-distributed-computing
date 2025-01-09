@@ -1,0 +1,25 @@
+// distmult_service.proto
+syntax = "proto3";
+
+package distmult;
+
+service DistMultService {
+  // A Bidirectional streaming RPC.
+  rpc ComputeMatrix (stream MatrixRequest) returns (stream MatrixResponse);
+}
+
+message MatrixRequest {
+    uint32 task_id = 1;
+    uint32 ops = 2;
+    uint32 n = 3;
+    repeated int32 inputa = 4;
+    repeated int32 inputb = 5;
+}
+
+message MatrixResponse {
+    uint32 task_id = 1;
+    uint32 n = 2;
+    repeated int32 result = 3;
+}
+
+

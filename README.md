@@ -82,9 +82,8 @@ Some tests are manually compiled and run:
 ```bash
 // test_matrix_utils
 g++ -std=c++17 -o test test_matrix_utils.cc utils.cc
-// test
+// test_resource_scheduler
 g++ -std=c++17 -pthread test_resource_scheduler.cc resource_scheduler.cc -o test
-wow manually works
 g++ -std=c++17 -D__THREAD test_resource_scheduler.cc resource_scheduler.cc -o test -lpthread
 ```
 
