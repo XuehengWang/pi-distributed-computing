@@ -32,9 +32,6 @@
 
 using grpc::Channel;
 using grpc::ClientContext;
-// using grpc::ClientReader;
-// using grpc::ClientReaderWriter;
-// using grpc::ClientWriter;
 using grpc::Status;
 using distmult::DistMultService;
 using distmult::MatrixRequest;
@@ -69,7 +66,6 @@ class DistMultClient {
         StartRead(&response_);
       }
 
-
       void OnWriteDone(bool ok) override {
         if (ok) {
           NextWrite();
@@ -77,9 +73,8 @@ class DistMultClient {
         }
       }
         
-      // act as reader thread
       void OnReadDone(bool ok) override {
-        LOG(INFO) << "Current thread ID: " << std::this_thread::get_id();
+        // LOG(INFO) << "Current thread ID: " << std::this_thread::get_id();
 
         if (ok) {
           // task_id = 1, rpi_id, n, result
@@ -89,21 +84,15 @@ class DistMultClient {
           // get task
           task_node_t* task;
           {
-            std::unique_lock<std::mutex> lock(mu_);
-            LOG(INFO) << "aaa1";
+            // std::unique_lock<std::mutex> lock(mu_);
             task_id = response_.task_id();
             
             n = response_.n();
-            LOG(INFO) << "aaa2";
             auto it = on_fly_tasks.find(task_id);
-            // if (task_id == 0) == 0
-            LOG(INFO) << "aaa3 task id is " << task_id << "? response " << response_.result()[0];
-            LOG(INFO) << (it==on_fly_tasks.end());
+            //LOG(INFO) << (it==on_fly_tasks.end());
             task = it->second;
-            
             rpi_id = task->assigned_rpi;
             on_fly_tasks.erase(task_id);
-            LOG(INFO) << "aaa5";
           }
          
           LOG(INFO) << "[ Client RPI " << rpi_id << " ] Received response for task_id: " << task_id
@@ -116,15 +105,11 @@ class DistMultClient {
           }
           result_cv_.notify_one();
 
-          LOG(INFO) << "bbb";
           // save output & send back task_id afterward
           //convertRepeatedToPtr(response_, task->result);
-          matrix_t *mat = new matrix_t(response_);
-          LOG(INFO) << "ccc";
-          task->result = Submatrix(0, 0, n);
-          LOG(INFO) << "ddd";
+          matrix_t *mat = new matrix_t(response_);       
+          task->result = Submatrix(0, 0, n);         
           task->result_matrix = mat;
-          LOG(INFO) << "eee";
 
           {
             std::unique_lock<std::mutex> lock(result_lock_);
@@ -132,9 +117,8 @@ class DistMultClient {
           }
           result_cv_.notify_one();
 
-          // on_fly_tasks.erase(task_id);
-          
-          LOG(INFO) << "ggg";
+          // on_fly_tasks.erase(task_id); 
+          // LOG(INFO) << "ggg";
           StartRead(&response_);
         }
 
@@ -142,7 +126,7 @@ class DistMultClient {
         
       void Stop() {
         StartWritesDone();
-        LOG(INFO) << "Finally! Stop!!";
+        // LOG(INFO) << "Stop!!";
       }
 
       void OnDone(const Status& s) override {
@@ -156,7 +140,7 @@ class DistMultClient {
         std::unique_lock<std::mutex> l(mu_);
         cv_.wait(l, [this] { return done_; });
         //writer_thread_.join();
-        LOG(INFO) << "Finally! Done is " << done_;
+        LOG(INFO) << "Finally! Client Done is " << done_;
         return std::move(status_);
       }
 
@@ -166,7 +150,6 @@ class DistMultClient {
       }
 
       void NextWrite() {
-        LOG(INFO) << "000";
         int task_id;
         task_node_t *task;
         {
@@ -179,38 +162,31 @@ class DistMultClient {
             return;
           }
           task_id = task_queue_.front();
-          LOG(INFO) << "111, task queue is " << task_queue_.size() << ", task id is " << task_id;
+          // LOG(INFO) << "task queue is " << task_queue_.size() << ", task id is " << task_id;
           task_queue_.pop();
           if (task_id == -1) { //stop
             Stop();
             return;
           }
           auto it = on_fly_tasks.find(task_id);
-          LOG(INFO) << "found?";
+          // LOG(INFO) << "found?";
           task = it->second;
-
-          LOG(INFO) << "222, task id is " << task_id << ", task found is " << task;
         }
-        std::queue<int> temp_queue = task_queue_;  // Copy the queue
 
-        std::cout << "Queue contents: ";
-        while (!temp_queue.empty()) {
-            std::cout << temp_queue.front() << " ";  // Access the front element
-            temp_queue.pop();  // Remove the front element
-        }
-        std::cout << std::endl;
+        // std::queue<int> temp_queue = task_queue_;  
+        // std::cout << "Queue contents: ";
+        // while (!temp_queue.empty()) {
+        //     std::cout << temp_queue.front() << " ";
+        //     temp_queue.pop();
+        // }
+        // std::cout << std::endl;
 
-        // get task: UPDATE LAST
-        // auto it = on_fly_tasks.find(task_id);
-        LOG(INFO) << "333, task id is " << task_id;
+        // get task: move to above
         // if (it != on_fly_tasks.end()) {
         // task_node_t* task = it->second;
-
         create_request(task->task_id, task->ops, task->n, task->left, task->right, task->left_matrix, task->right_matrix);
         
-        LOG(INFO) << "444";
         LOG(INFO) << "[ Client RPI " << task->assigned_rpi << " ] Sending request " << request_.task_id() << " with ops " << task->ops << ", input A[0] = " << request_.inputa()[0];
-        
         // LOG(INFO) << "input A[n^2-1] = " << request_.inputa()[request_.n()*request_.n()-1];
         StartWrite(&request_);
       }
@@ -221,17 +197,14 @@ class DistMultClient {
           request_.set_n(n); 
           request_.clear_inputa();
           request_.clear_inputb();
-          LOG(INFO) << "n = " << n << ", subA = "<< subA.row_start << ", ";  
-
+          // LOG(INFO) << "n = " << n << ", subA = "<< subA.row_start << ", ";  
 
           inputA->get_submatrix_data(subA, request_, "inputa");
-
           inputB->get_submatrix_data(subB, request_, "inputb");
 
           // for (size_t i = 0; i < n*n; ++i) {
           //   request_.add_inputa(inputA[i]);  
           // }
-
           // for (size_t i = 0; i < n*n; ++i) {
           //   request_.add_inputb(inputB[i]);  
           // }
@@ -249,24 +222,8 @@ class DistMultClient {
       //         result_array[i] = repeated_result[i];
       //     }
       // }
-      // void convertRepeatedToPtr(const MatrixResponse& msg, int*& result_array, size_t& result_size) {
-      //     const google::protobuf::RepeatedField<int32_t>& repeated_result = msg.result();
-      //     result_size = repeated_result.size();
-      //     new 
-      //     result_array = new int[result_size];
-          
-      //     LOG(INFO) << "CONVERTED... result size is " << result_size;
-      //     for (size_t i = 0; i < result_size; ++i) {
-      //         LOG(INFO) << repeated_result[i];
-      //         result_array[i] = repeated_result[i];
-      //     }
-      // }
-
-
 
       ClientContext context_;
-      // std::vector<MatrixRequest> notes_;
-      // std::vector<MatrixRequest>::const_iterator notes_iterator_;
       MatrixResponse response_;
       MatrixRequest request_;
 
@@ -287,22 +244,16 @@ class DistMultClient {
       std::condition_variable cv_;
       Status status_;
       bool done_ = false;
-
-
-
     };
 
     ComputeRPC chatter(stub_.get(), result_queue_, result_cv_, result_lock_, on_fly_tasks, task_lock_, task_cv_, task_queue_);
     //std::shared_ptr<ComputeRPC> rpc_handle = std::make_shared<ComputeRPC>(stub_.get(), result_queue_, result_cv_, result_lock_);
-    LOG(INFO) << "Client thread await..."; 
+    // LOG(INFO) << "Client thread await..."; 
     //ComputeRPC *handle = new ComputeRPC(stub_.get());
-    //should still call wait, or can I return handle?
-    //for furture call the RPC method, should I use ComputeRPC* or DistMultClient*
     Status status = chatter.Await();
-
-    if (!status.ok()) {
-      std::cout << "Client rpc failed." << std::endl;
-    }
+    // if (!status.ok()) {
+    //   std::cout << "Client rpc failed." << std::endl;
+    // }
   }
 
   void Stop() {
@@ -315,10 +266,9 @@ class DistMultClient {
     // chatter.Stop();
   }
 
-  //put the task into map, for writer thread of this client
+  //put the task into map for writer thread
   void add_task(task_node_t*& task) {
     int task_id = task->task_id;
-    // on_fly_tasks[task_id] = task;
     {
       std::unique_lock<std::mutex> lock(task_lock_);
       on_fly_tasks[task_id] = task;
@@ -327,14 +277,13 @@ class DistMultClient {
     task_cv_.notify_one();
     LOG(INFO) << "[ Client RPI " << task->assigned_rpi << " ]: add_task " << task->task_id;
     
-    std::queue<int> temp_queue = task_queue_;  // Copy the queue
-
-    std::cout << "Queue contents: ";
-    while (!temp_queue.empty()) {
-        std::cout << temp_queue.front() << " ";  // Access the front element
-        temp_queue.pop();  // Remove the front element
-    }
-    std::cout << std::endl;
+    // std::queue<int> temp_queue = task_queue_;
+    // std::cout << "Queue contents: ";
+    // while (!temp_queue.empty()) {
+    //     std::cout << temp_queue.front() << " ";
+    //     temp_queue.pop();
+    // }
+    // std::cout << std::endl;
   }
 
   private:
@@ -349,9 +298,6 @@ class DistMultClient {
 };
 
 
-
-
-
 class ClusterManager {
 public:
     ClusterManager(std::string &task_type, int num_rpi, std::vector<std::string>& addresses): num_rpi_(0) {
@@ -360,8 +306,8 @@ public:
         
         initialize_matrix_rpc(num_rpi, addresses);
 
-        matrix_size_ = 18184; // fixed now
-        submatrix_size_ = 1024;
+        matrix_size_ = 1024; // fixed now
+        submatrix_size_ = 128;
         std::this_thread::sleep_for(std::chrono::seconds(135));
         initialize_matrix_tasks(matrix_size_, submatrix_size_);
         
@@ -377,32 +323,30 @@ public:
       LOG(INFO) << "ClusterManager: Start reader and writer threads";
       writer_thread_ = std::thread(&ClusterManager::writer, this);
       reader_thread_ = std::thread(&ClusterManager::reader, this);
-
-      LOG(INFO) << "Here6";
       random_id_ = 100;
     }
   
   ~ClusterManager() {
     if (writer_thread_.joinable()) {
       writer_thread_.join();
-      LOG(INFO) << "writer joined!";
+      LOG(INFO) << "Writer joined!";
     }
     if (reader_thread_.joinable()) {
       reader_thread_.join();
-      LOG(INFO) << "reader joined!";
+      LOG(INFO) << "Reader joined!";
     }
 
     for (std::thread& t : client_threads_) {
         if (t.joinable()) {
             t.join();
         }
-        LOG(INFO) << "client joined!";
+        LOG(INFO) << "All client joined!";
     }
     client_map.clear();
   }
 
 private:
-    // just a place holder
+    // just a place holder for results
     // void initialize_matrix_results(){
     //   for (size_t i = 0; i < (matrix_size_/submatrix_size_)*(matrix_size_/submatrix_size_); ++i) {
     //         //results_.push_back(matrix_t(submatrix_size_)); // Create and add a 3x3 matrix as an example
@@ -417,7 +361,6 @@ private:
 
         std::string address = addresses[i];
         // create_matrix_rpc(num_rpi_, addresses[i]);
-        // LOG(INFO) << "Here5";
         std::thread rpc_thread([this, address, i]() {
             LOG(INFO) << "Started RPC for address: " << address;
             std::shared_ptr<DistMultClient> client = std::make_shared<DistMultClient>(
@@ -447,20 +390,18 @@ private:
     //   std::shared_ptr<DistMultClient> client = new std::shared_ptr<DistMultClient>(grpc::CreateChannel(server_address, grpc::InsecureChannelCredentials()),
     //   result_queue_, result_cv_, result_lock_);
 
-    //   LOG(INFO) << "Here4";
     //   //ComputeRPC* rpc_handle = client.ComputeMatrix();
      
-    //  LOG(INFO) << "Here5";
     //   // std::shared_ptr<ComputeRPC> rpc_handle = client.ComputeMatrix();
     //   client_map[rpi_id] = rpc_handle;
     //   LOG(INFO) << "Client RPC started for RPI_id: " << rpi_id;
     // }
 
     void initialize_matrix_tasks(int matrix_size, int submatrix_size) {
-      whole_matrix_ = new matrix_t(18184); //initialize matrix data in 2D format
+      whole_matrix_ = new matrix_t(1024); //initialize matrix data in 2D format
       //whole_matrix_->print_matrix();
       create_tasks(matrix_size, submatrix_size, all_tasks_, initial_tasks_, whole_matrix_);
-      LOG(INFO) << "Created " << all_tasks_.size() << " in total, " << "starting with " << initial_tasks_.size() << " multiplications...";
+      //LOG(INFO) << "Created " << all_tasks_.size() << " in total, " << "starting with " << initial_tasks_.size() << " multiplications...";
       std::cout << "Created " << all_tasks_.size() << " in total, " << "starting with " << initial_tasks_.size() << " multiplications..." << std::endl;
       remaining_tasks_ = (matrix_size/submatrix_size) *  (matrix_size/submatrix_size);//subtrees
       //remaining_tasks_ = all_tasks_.size();
@@ -478,7 +419,6 @@ private:
     void writer() {
       while (!stop_) {
         task_node_t* select_task;
-        LOG(INFO) << "In writer";
         {
           std::unique_lock<std::mutex> lock(task_lock_); 
           while (initial_tasks_.empty() && !stop_) { 
@@ -490,7 +430,7 @@ private:
           }
           select_task = initial_tasks_.front();
           // LOG(INFO) << "selected task is " << select_task;
-          initial_tasks_.erase(initial_tasks_.begin()); // no pop()
+          initial_tasks_.erase(initial_tasks_.begin()); // TODO: pop()
         }
 
         // get resource (select secondary node)
@@ -498,7 +438,7 @@ private:
         auto it = client_map.find(select_rpi);
         if (it != client_map.end()) {
           std::shared_ptr<DistMultClient> client = it->second;
-          LOG(INFO) << "Found RPC Client with rpi_id " << select_rpi;
+          // LOG(INFO) << "Found RPC Client with rpi_id " << select_rpi;
           
           // task_id + assigned_rpi
           select_task->assigned_rpi = select_rpi;
@@ -507,17 +447,16 @@ private:
           int task_id = 100 + random_id_ % (num_rpi_ * 20);
           random_id_++;
           select_task->task_id = task_id;
-          LOG(INFO) << "writer thread: selected task is " << select_task << ", assign id " << select_task->task_id;
+          LOG(INFO) << "Writer: Selected task " << select_task << ", assigned to " << select_rpi << " with task_id = " << select_task->task_id;
           
           // int* buffer = new int[submatrix_size_ * submatrix_size_];
           // select_task->result = buffer;
 
-          // put the task into map
           on_fly_tasks[task_id] = select_task;
 
-          // prepare the request?
-          LOG(INFO) << "Finish preparing the task " << task_id << " on Manager, sending to RPC Client...";
-          // notify the secondary to work for task
+          // // prepare the request?
+          // LOG(INFO) << "Finish preparing the task " << task_id << " on Manager, sending to RPC Client...";
+          // // notify the secondary to work for task
           client->add_task(select_task); //task_node_t
         } else {
           LOG(ERROR) << "Client with rpi_id " << select_rpi << " not found!" << std::endl;
@@ -530,7 +469,6 @@ private:
       }
     }
         
-
     void reader() {
       while (!stop_) {
         int result_to_process;
@@ -695,15 +633,14 @@ private:
     int random_id_;
     int matrix_size_;
     int submatrix_size_;
-
     std::mutex parent_lock_;
 
     int num_rpi_;
-    //int remaining_tasks_; //(1024/128)^2
-    std::atomic<int> remaining_tasks_{0};
+    int remaining_tasks_; //(1024/128)^2
+    // std::atomic<int> remaining_tasks_{0};
     matrix_t *whole_matrix_;
     //std::vector<std::shared_ptr<matrix_t>> results_;
-    std::queue<matrix_t *> results_;
+    std::queue<matrix_t*> results_;
 
 
     /* Tasks */
@@ -719,7 +656,6 @@ private:
     ResourceScheduler resource_scheduler;
     
     /* Map: rpi_id -> corresponding rpc client */
-    //std::unordered_map<int, std::shared_ptr<DistMultClient>> client_map;
     std::unordered_map<int, std::shared_ptr<DistMultClient>> client_map;
 
     std::thread reader_thread_;
@@ -728,18 +664,15 @@ private:
     std::mutex task_lock_;
 
     /* For RPC clients to send results */
-    std::queue<int> result_queue_; //1000-2000 for task_id, smaller numbers of rpi_id
+    std::queue<int> result_queue_; //smaller numbers of rpi_id (< num_rpi), others are task_id (> 100 now)
     std::mutex result_lock_;
     std::condition_variable result_cv_;
 
     std::atomic<int> stop_{false};
-
     std::mutex thread_mutex_;
     std::vector<std::thread> client_threads_;
-
-    //std::queue<matrix_t> intermediates_;
+    //std::queue<matrix_t> intermediates_; // store intermediate results
 };
-
 
 int main(int argc, char** argv) {
 
@@ -751,7 +684,6 @@ int main(int argc, char** argv) {
     std::cerr << "Usage: " << argv[0] << " <task_type> <num_RPI> <address_1> ... <address_n>\n";
     return EXIT_FAILURE;
   }
-
 
   std::string task_type = argv[1];
   int num_RPI = std::stoi(argv[2]); // now we use fixed size of RPI workers
@@ -767,10 +699,7 @@ int main(int argc, char** argv) {
     addresses.push_back(address);
     // manager.create_client(i, address);
   }
-  // Store all addresses in the ClientManager
+
   ClusterManager manager(task_type, num_RPI, addresses);
-  
-
   return EXIT_SUCCESS;
-
 }
