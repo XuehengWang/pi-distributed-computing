@@ -59,9 +59,13 @@ make
 ./distmult_client matrix 3 10.10.1.1:50051 10.10.1.1:50052 10.10.1.1:50053
 ```
 
+
+
 ---
 
-Others:
+
+
+## Others:
 - Manually compile proto file, assuming `distmult.proto` is in the current directory
 ```bash
 protoc --proto_path=. --cpp_out=. --grpc_out=. --plugin=protoc-gen-grpc=`which grpc_cpp_plugin` distmult_service.proto
