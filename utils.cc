@@ -71,7 +71,6 @@ void matrix_t::print_submatrix(size_t row_start, size_t col_start, size_t submat
 }
 
 int create_tasks(const size_t matrix_size, const size_t submatrix_size, std::vector<task_node_t*>& tasks_final, std::vector<task_node_t*>& tasks_init, matrix_t *mat) {
-    //matrix_t mat(matrix_size);
 
     int sub_trees = (matrix_size / submatrix_size) * (matrix_size / submatrix_size);
 
@@ -85,11 +84,6 @@ int create_tasks(const size_t matrix_size, const size_t submatrix_size, std::vec
 
         // Simulate submatrices using original matrix and pointers
         for (size_t j = 0; j < num_multiplication_tasks; ++j) {
-        //     auto new_task = std::make_shared<task_node_t>(MULTIPLICATION);
-        //     new_task->left = std::make_unique<matrix_t>(128);
-        //     new_task->right = std::make_unique<matrix_t>(128);
-        //     tasks.push_back(std::move(new_task));  // no dynamic allocation
-        // }
             
             size_t col_start = j * submatrix_size;
             size_t row_start = size_t(i / (matrix_size / submatrix_size)) * submatrix_size;
@@ -109,19 +103,17 @@ int create_tasks(const size_t matrix_size, const size_t submatrix_size, std::vec
 
             new_task->left = mat->track_submatrix(row_start, col_start, submatrix_size);
             new_task->right = mat->track_submatrix(col_start, row_start, submatrix_size);
-
             new_task->subtree_id = i;
-            // //new_task->subtree_done = false;
+            // new_task->subtree_done = false;
             // tasks.push_back(std::move(new_task));  // Add task to the vector
             // tasks_init.push_back(std::move(new_task));
-            //UPDATE:
-            tasks.push_back(new_task);  // Add task to the vector
-            tasks_init.push_back(new_task);  // Copy the shared_ptr to tasks_init
+            // UPDATE:
+            tasks.push_back(new_task); 
+            tasks_init.push_back(new_task);  // shared_ptr, do not move ownership
 
         }
 
         // each pair of results does addition
-        
         int dependency_counter = 0;
         int base = matrix_size / submatrix_size / 2;
         while (base >= 1) {
@@ -130,8 +122,6 @@ int create_tasks(const size_t matrix_size, const size_t submatrix_size, std::vec
                 task_node_t* new_task = new task_node_t(ADDITION, submatrix_size);
                 //auto new_task = std::make_shared<task_node_t>(ADDITION, submatrix_size);
                 // new_task->left = nullptr;  // Wait for result
-                // new_task->right = nullptr;
-                // new_task->result = nullptr;
                 
                 // tasks[dependency_counter]->parent = new_task.get();
                 // new_task->left_child = tasks[dependency_counter].get();
@@ -156,7 +146,7 @@ int create_tasks(const size_t matrix_size, const size_t submatrix_size, std::vec
         }
        
         //std::cout << dependency_counter << ", " << tasks_count << std::endl;
-        assert((dependency_counter == tasks.size() - 1) || (dependency_counter == tasks.size() - 2));
+        assert((dependency_counter == tasks.size() - 1)); // power of 2
 
         // for (const auto& task : tasks) {
         //     std::cout << "Task Type: ";

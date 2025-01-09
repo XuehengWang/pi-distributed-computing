@@ -157,12 +157,6 @@ struct task_node_t {
         left(0, 0, n), right(0, 0, n), result(0,0,n) {}
 };
 
-// struct subtree_t {
-//   matrix_t submatrix;
-//   size_t small_n; //n*n
-//   std::vector<int> result;
-// }
-
 // // can be found in task_map
 // struct task_result_t {
 //   //if only this field, read thread to free up a resource; otherwise this field = -1
@@ -177,9 +171,6 @@ struct task_node_t {
 int create_tasks(const size_t matrix_size, const size_t submatrix_size, std::vector<task_node_t*>& tasks_final, std::vector<task_node_t*>& tasks_init, matrix_t *mat);
 
 int random_int(int min, int max);
-
-
-
 
 } //namespace
 
