@@ -14,11 +14,6 @@
 #include "distmult_service.grpc.pb.h"
 #include "utils.h"
 
-// enum FunctionID {
-//     ADD,
-//     MULTIPLY,
-// };
-
 
 class TaskHandler {
 public:

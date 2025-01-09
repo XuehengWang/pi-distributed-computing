@@ -4,7 +4,6 @@
 
 namespace matrixclass {
 
-
 MatrixClass::MatrixClass(uint32_t n)
         : n_(n), tasks_pending(0) {
     
@@ -87,8 +86,8 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
         // avoid input and result data copy
         google::protobuf::RepeatedField<int32_t>& input_field1 = *request.mutable_inputa();
         google::protobuf::RepeatedField<int32_t>& input_field2 = *request.mutable_inputb();
-        std::cout << "buffer.data.inputA.size = " << input_field1.size() << std::endl;
-        std::cout << "buffer.data.inputB.size = " << input_field2.size() << std::endl;
+        // std::cout << "buffer.data.inputA.size = " << input_field1.size() << std::endl;
+        // std::cout << "buffer.data.inputB.size = " << input_field2.size() << std::endl;
 
         int32_t* input_ptr1 = input_field1.mutable_data();
         int32_t* input_ptr2 = input_field2.mutable_data();
@@ -108,9 +107,9 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
         buffer.data.inputA = reinterpret_cast<int32_t*>(input_ptr1);
         buffer.data.inputB = reinterpret_cast<int32_t*>(input_ptr2);
         
-        std::cout << "buffer.data.inputA: " << buffer.data.inputA << std::endl;
-        std::cout << "buffer.data.inputB: " << buffer.data.inputB << std::endl;
-        std::cout << "n = " << buffer.data.n << std::endl;
+        // std::cout << "buffer.data.inputA: " << buffer.data.inputA << std::endl;
+        // std::cout << "buffer.data.inputB: " << buffer.data.inputB << std::endl;
+        // std::cout << "n = " << buffer.data.n << std::endl;
 
         MatrixResponse& response = buffer.response;
         int n = buffer.data.n;
@@ -122,7 +121,7 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
 
         buffer.data.result = result_ptr; 
 
-        std::cout << "buffer.data.result: " << buffer.data.result << std::endl;
+        // std::cout << "buffer.data.result: " << buffer.data.result << std::endl;
         
         // all good
         // std::cout << "In processing data -> " << "1: " << int32_t(buffer.data.result[0]) << std::endl;
@@ -140,61 +139,9 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
     input_cv_[thread_id].notify_one();
 }
 
-// int MatrixClass::check_response() {
-//     // need manual unlock
-//     std::cout << "task pending is " << tasks_pending << std::endl;
-// //UPDATE_LAST
-// check:
-//     //{   
-//         std::unique_lock<std::mutex> output_lock(output_lock_);
-        
-//     //}
-
-//     if (tasks_pending > 0) {
-//         task_result_t& result = output_queue_.front();
-//         output_queue_.pop();
-//         tasks_pending--;
-
-//         output_lock.unlock();
-        
-//         // preapre response
-//         int all_id = result.buffer_id * 4 + result.thread_id;
-//         std::cout << "Prepare result... buffer_id = " << result.buffer_id << " thread_id = " << result.thread_id << std::endl;
-        
-//         matrix_buffer_t &buffer = buffers_[all_id];
-//         MatrixResponse &response = buffer.response;
-
-//         std::cout << "Response result[0]: " << response.result(0) << std::endl;
-
-//         response.set_task_id(result.task_id);
-//         // result should be ready in the field result
-//         response.set_n(buffer.data.n);
-
-//         // // Print the result field
-//         // std::cout << "Task ID: " << result.task_id << ", n: " << buffer.data.n 
-//         //         << ", Result: [";
-
-//         // // Iterate and print the result field
-//         // const auto& result_field = response.result(); // Access the repeated field
-//         // for (int i = 0; i < result_field.size(); ++i) {
-//         //     std::cout << result_field[i];
-//         //     if (i < result_field.size() - 1) {
-//         //         std::cout << ", "; // Print a comma for all except the last element
-//         //     }
-//         // }
-//         // std::cout << "]" << std::endl;
-//         return all_id;
-
-//     } else {
-//         output_cv_.wait(output_lock, [this] { return tasks_pending > 0; }); 
-//         goto check;
-//         //return -1;
-//     }
-// }
-
 int MatrixClass::check_response() {
     task_result_t *result;
-    std::cout << "task pending is " << tasks_pending << std::endl;
+    // std::cout << "task pending is " << tasks_pending << std::endl;
     int all_id;
     {
         std::unique_lock<std::mutex> output_lock(output_lock_);
@@ -206,19 +153,18 @@ int MatrixClass::check_response() {
         output_queue_.pop();
         tasks_pending--;
     }
-    std::cout << "stop_flag is " << stop_flag_ << std::endl;
     // assert(result->task_id != 0);
 
     // int all_id = result->buffer_id * 4 + result->thread_id;
              
-    std::cout << "Check response... buffer_id = " << result->buffer_id << "(" <<result->task_id<< ") thread_id = " << result->thread_id << "; all id is " << all_id << std::endl;
+    std::cout << "Check response... buffer_id = " << result->buffer_id << "(" <<result->task_id<< "), thread_id = " << result->thread_id << ", all id is " << all_id << std::endl;
         
     matrix_buffer_t &buffer = buffers_[all_id];
     MatrixResponse *response = &(buffer.response);
 
     // AHA! Catch here!
     // std::cout << "Response result[0]: " << response->result(0) << ", Set task_id " << result->task_id << std::endl;
-    std::cout << "Response result[0]: " << response->result(0) << ", Set task_id " << buffer.data.task_id << std::endl;
+    // std::cout << "Response result[0]: " << response->result(0) << ", Set task_id " << buffer.data.task_id << std::endl;
 
     response->set_task_id(buffer.data.task_id);
     // result should be ready in the field result
@@ -247,15 +193,14 @@ void MatrixClass::initialize_threads() {
                     // get a task by buffer id
                     buffer_id = input_queue_[tid].front();
                     input_queue_[tid].pop();
-                    std::cout << "Thread [" << tid << "]: gets a task from buffer " << buffer_id << std::endl;
+                    // std::cout << "Thread [" << tid << "]: gets a task from buffer " << buffer_id << std::endl;
                 }//lock.unlock();
                 
                 matrix_buffer_t &working_buffer = buffers_[buffer_id * 4 + tid];
                 std::cout << "Thread " << tid << " is processing task (" << working_buffer.data.task_id
                         << ") from buffer " << (int)buffer_id << std::endl;
 
-                //std::cout << "Thread " << tid << std::endl;
-                std::cout << " result[0] before = " << (int)*working_buffer.data.result << std::endl;
+                //std::cout << " result[0] before = " << (int)*working_buffer.data.result << std::endl;
                 //std::cout << " inputA[0] before = " << (int)*working_buffer.data.inputA << std::endl;
                 //std::cout << " inputB[0] before = " << (int)*working_buffer.data.inputB << std::endl;
 
@@ -281,7 +226,7 @@ void MatrixClass::initialize_threads() {
                 //std::this_thread::sleep_for(std::chrono::seconds(1));
                 std::this_thread::sleep_for(std::chrono::microseconds(200));
 
-                std::cout << "Thread " << tid << " results[0] = " << *(working_buffer.data.result) << std::endl;
+                // std::cout << "Thread " << tid << " results[0] = " << *(working_buffer.data.result) << std::endl;
                 // put the result into output queue
                 // task_result_t result(tid, buffer_id, working_buffer.data.task_id);
                 int task_id;

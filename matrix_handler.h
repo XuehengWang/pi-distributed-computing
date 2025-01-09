@@ -10,7 +10,6 @@ namespace matrixclass {
 
 struct task_compute_data_t {
     uint32_t task_id;
-    // uint8_t buffer_id; //0 or 1
     // struct matrix_1d_t *MatrixA;
     // struct matrix_1d_t *MatrixB;
     // struct matrix_1d_t *result;
@@ -20,7 +19,6 @@ struct task_compute_data_t {
     int32_t *inputB;
     int32_t *result;
 
-    // Constructor to initialize the members
     task_compute_data_t(uint32_t task_id, uint32_t n, utils::FunctionID ops)
         : task_id(task_id), ops(ops), n(n), inputA(nullptr),inputB(nullptr), result(nullptr) {}
 };
@@ -36,7 +34,6 @@ struct task_result_t {
 
 struct alignas(64) matrix_buffer_t {
     MatrixRequest request;
-    //TODO: data.task_id set to -1 after each processing
     task_compute_data_t data;
     MatrixResponse response;
     //struct task_result_t result;
@@ -46,8 +43,6 @@ struct alignas(64) matrix_buffer_t {
           data(-1, 0, utils::FunctionID::ADDITION),
           response() {
             // // response.result does not have valid memory space
-            // // if do not know appropriate n?
-            // int n = 10;
             // response.mutable_result()->Reserve(n);
     }
 };
