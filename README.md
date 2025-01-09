@@ -71,8 +71,9 @@ protoc --proto_path=. --cpp_out=. --grpc_out=. --plugin=protoc-gen-grpc=`which g
 ```bash
 ctest --output-on-failure
 ```
-    - This is supposed to work using cmake, but now most tests are not integrated with cmake
-    - Some tests are manually compiled and run:
+
+(This is supposed to work using cmake as above, but now most tests are not integrated with cmake) <br/>
+Some tests are manually compiled and run:
 
 ```bash
 // test_matrix_utils
