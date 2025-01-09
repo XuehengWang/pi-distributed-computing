@@ -40,7 +40,6 @@ using grpc::ServerBidiReactor;
 using distmult::DistMultService;
 using distmult::MatrixRequest;
 using distmult::MatrixResponse;
-// using distmult::Point;
 using std::chrono::system_clock;
 
 using matrixclass::MatrixClass;
@@ -116,7 +115,7 @@ public:
         
         if (all_id == -1) { //no more response to process
           //NextRead();
-          //UPDATE: should not come back with all_id = -1
+          //UPDATE: should not come back with all_id = -1, just wait
            LOG(INFO) << "OHNO Server writer: check response returns -1";
         } else {
           int buffer_id = all_id / 4;
