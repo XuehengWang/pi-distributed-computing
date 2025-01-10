@@ -308,7 +308,7 @@ public:
 
         matrix_size_ = 1024; // fixed now
         submatrix_size_ = 128;
-        std::this_thread::sleep_for(std::chrono::seconds(135));
+        std::this_thread::sleep_for(std::chrono::seconds(5));
         initialize_matrix_tasks(matrix_size_, submatrix_size_);
         
       } else {
@@ -636,8 +636,8 @@ private:
     std::mutex parent_lock_;
 
     int num_rpi_;
-    int remaining_tasks_; //(1024/128)^2
-    // std::atomic<int> remaining_tasks_{0};
+    // int remaining_tasks_; //(1024/128)^2
+    std::atomic<int> remaining_tasks_{0};
     matrix_t *whole_matrix_;
     //std::vector<std::shared_ptr<matrix_t>> results_;
     std::queue<matrix_t*> results_;

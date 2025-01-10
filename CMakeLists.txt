@@ -35,6 +35,10 @@ find_package(absl CONFIG REQUIRED)
 get_filename_component(mult_proto "./protos/distmult_service.proto" ABSOLUTE)
 get_filename_component(mult_proto_path "${mult_proto}" PATH)
 
+
+# blis 
+# find_package(BLIS CONFIG REQUIRED)
+
 # Generated sources in build, will move to src
 set(mult_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.pb.cc")
 set(mult_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.pb.h")
@@ -94,6 +98,7 @@ add_library(task_handler
 target_link_libraries(task_handler
   mult_grpc_proto
   utils
+  blis
   ${_REFLECTION}
   ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF})
@@ -119,6 +124,7 @@ foreach(_target
     task_handler
     resource_scheduler
     utils
+    blis
     absl::flags_parse
     absl::absl_log
     absl::log_initialize

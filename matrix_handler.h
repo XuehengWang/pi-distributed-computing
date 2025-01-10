@@ -15,9 +15,9 @@ struct task_compute_data_t {
     // struct matrix_1d_t *result;
     utils::FunctionID ops;
     uint32_t n;
-    int32_t *inputA;
-    int32_t *inputB;
-    int32_t *result;
+    float *inputA;
+    float *inputB;
+    float *result;
 
     task_compute_data_t(uint32_t task_id, uint32_t n, utils::FunctionID ops)
         : task_id(task_id), ops(ops), n(n), inputA(nullptr),inputB(nullptr), result(nullptr) {}

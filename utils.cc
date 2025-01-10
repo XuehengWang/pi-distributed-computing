@@ -4,9 +4,9 @@ namespace utils{
 
 
 matrix_t::matrix_t(size_t size) : n(size) {
-    data = new int32_t*[n];
+    data = new float*[n];
     for (size_t i = 0; i < n; ++i) {
-        data[i] = new int32_t[n];
+        data[i] = new float[n];
         for (size_t j = 0; j < n; ++j) {
             data[i][j] = 1;  // init to 1s
         }
@@ -14,10 +14,10 @@ matrix_t::matrix_t(size_t size) : n(size) {
 }
 
 // initialize using a 1D array
-matrix_t::matrix_t(size_t size, int* raw_data) : n(size) {
-    data = new int32_t*[n];
+matrix_t::matrix_t(size_t size, float* raw_data) : n(size) {
+    data = new float*[n];
     for (size_t i = 0; i < n; ++i) {
-        data[i] = new int32_t[n];
+        data[i] = new float[n];
         for (size_t j = 0; j < n; ++j) {
             std::cout << raw_data[i * n + j] << " ";
             data[i][j] = raw_data[i * n + j];  
@@ -35,14 +35,14 @@ matrix_t::~matrix_t() {
 
 
 // pointer to the top-left of a submatrix
-int32_t* matrix_t::get_submatrix(size_t row_start, size_t col_start, size_t submatrix_size) {
+float* matrix_t::get_submatrix(size_t row_start, size_t col_start, size_t submatrix_size) {
     //std::cout << "data here is " << data[row_start][col_start] << std::endl;
     return &(data[row_start][col_start]);
 }
 
 // for 1D representation
-std::vector<int32_t> matrix_t::get_submatrix_data(size_t row_start, size_t col_start, size_t submatrix_size) {
-    std::vector<int32_t> submatrix_data;
+std::vector<float> matrix_t::get_submatrix_data(size_t row_start, size_t col_start, size_t submatrix_size) {
+    std::vector<float> submatrix_data;
     for (size_t i = 0; i < submatrix_size; ++i) {
         for (size_t j = 0; j < submatrix_size; ++j) {
             submatrix_data.push_back(data[row_start + i][col_start + j]);

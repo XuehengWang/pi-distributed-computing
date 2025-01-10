@@ -84,13 +84,13 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
 
 
         // avoid input and result data copy
-        google::protobuf::RepeatedField<int32_t>& input_field1 = *request.mutable_inputa();
-        google::protobuf::RepeatedField<int32_t>& input_field2 = *request.mutable_inputb();
+        google::protobuf::RepeatedField<float>& input_field1 = *request.mutable_inputa();
+        google::protobuf::RepeatedField<float>& input_field2 = *request.mutable_inputb();
         // std::cout << "buffer.data.inputA.size = " << input_field1.size() << std::endl;
         // std::cout << "buffer.data.inputB.size = " << input_field2.size() << std::endl;
 
-        int32_t* input_ptr1 = input_field1.mutable_data();
-        int32_t* input_ptr2 = input_field2.mutable_data();
+        float* input_ptr1 = input_field1.mutable_data();
+        float* input_ptr2 = input_field2.mutable_data();
 
         // std::cout << "InputA elements: ";
         // for (int i = 0; i < input_field1.size(); ++i) {
@@ -104,8 +104,8 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
         // }
         // std::cout << std::endl;
 
-        buffer.data.inputA = reinterpret_cast<int32_t*>(input_ptr1);
-        buffer.data.inputB = reinterpret_cast<int32_t*>(input_ptr2);
+        buffer.data.inputA = reinterpret_cast<float*>(input_ptr1);
+        buffer.data.inputB = reinterpret_cast<float*>(input_ptr2);
         
         // std::cout << "buffer.data.inputA: " << buffer.data.inputA << std::endl;
         // std::cout << "buffer.data.inputB: " << buffer.data.inputB << std::endl;
@@ -116,8 +116,8 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
         //response.mutable_result()->Reserve(n);
         response.mutable_result()->Resize(n*n, 0);
         
-        google::protobuf::RepeatedField<int32_t>& result_field = *response.mutable_result();
-        int32_t* result_ptr = result_field.mutable_data();
+        google::protobuf::RepeatedField<float>& result_field = *response.mutable_result();
+        float* result_ptr = result_field.mutable_data();
 
         buffer.data.result = result_ptr; 
 
@@ -179,7 +179,11 @@ void MatrixClass::initialize_threads() {
         compute_threads_.emplace_back([this, tid]() {
             pin_thread_to_core(tid);
             //matrix_buffer_t working_buffer;
-            
+
+            bli_init();
+            obj_t A_blis, B_blis, C_blis;
+
+
             // thread loop
             while (!stop_flag_) {
                 uint32_t buffer_id;
@@ -216,15 +220,20 @@ void MatrixClass::initialize_threads() {
                 } else {
 
                     std::cout << "MULTIPLICATION" << std::endl;
-                    for (int i = 0; i < n*n; i++) {
-                        //std::cout << working_buffer.data.result[i] << " = " << working_buffer.data.inputA[i] << " * " << working_buffer.data.inputB[i] << std::endl;
-                        working_buffer.data.result[i] = working_buffer.data.inputA[i] * working_buffer.data.inputB[i];
-                    }
+                    bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.inputA, 1, n, &A_blis);
+                    bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.inputB, 1, n, &B_blis);
+                    bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.result, 1, n, &C_blis);
+                    
+                    bli_gemm(&BLIS_ONE, &A_blis, &B_blis, &BLIS_ZERO, &C_blis);
+                    // for (int i = 0; i < n*n; i++) {
+                    //     //std::cout << working_buffer.data.result[i] << " = " << working_buffer.data.inputA[i] << " * " << working_buffer.data.inputB[i] << std::endl;
+                    //     working_buffer.data.result[i] = working_buffer.data.inputA[i] * working_buffer.data.inputB[i];
+                    // }
                 }
                 
                 //simulate heavy work
                 //std::this_thread::sleep_for(std::chrono::seconds(1));
-                std::this_thread::sleep_for(std::chrono::microseconds(200));
+                //std::this_thread::sleep_for(std::chrono::microseconds(200));
 
                 // std::cout << "Thread " << tid << " results[0] = " << *(working_buffer.data.result) << std::endl;
                 // put the result into output queue
@@ -241,6 +250,7 @@ void MatrixClass::initialize_threads() {
                 output_cv_.notify_one(); //TODO: move out?
                 std::cout << "Thread " << tid << " pushed task "<< working_buffer.data.task_id << " : " << task_id << ", tasks_pending increased to " << tasks_pending << std::endl;
             }
+            bli_finalize();
         });
     }
 }
