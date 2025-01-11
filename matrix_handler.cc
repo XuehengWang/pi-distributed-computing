@@ -181,7 +181,8 @@ void MatrixClass::initialize_threads() {
             //matrix_buffer_t working_buffer;
 
             bli_init();
-            obj_t A_blis, B_blis, C_blis;
+            double alpha = 1.0, beta = 0.0;
+            //obj_t A_blis, B_blis, C_blis;
 
 
             // thread loop
@@ -220,11 +221,11 @@ void MatrixClass::initialize_threads() {
                 } else {
 
                     std::cout << "MULTIPLICATION" << std::endl;
-                    bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.inputA, 1, n, &A_blis);
-                    bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.inputB, 1, n, &B_blis);
-                    bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.result, 1, n, &C_blis);
-                    
-                    bli_gemm(&BLIS_ONE, &A_blis, &B_blis, &BLIS_ZERO, &C_blis);
+                    //bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.inputA, 1, n, &A_blis);
+                    //bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.inputB, 1, n, &B_blis);
+                    //bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.result, 1, n, &C_blis);
+                    bli_dgemm(BLIS_NO_TRANSPOSE, BLIS_NO_TRANSPOSE, n, n, n, &alpha, working_buffer.data.inputA, 1, n, working_buffer.data.inputB, 1, n, &beta, working_buffer.data.result, 1, n);
+                    //bli_gemm(&BLIS_ONE, &A_blis, &B_blis, &BLIS_ZERO, &C_blis);
                     // for (int i = 0; i < n*n; i++) {
                     //     //std::cout << working_buffer.data.result[i] << " = " << working_buffer.data.inputA[i] << " * " << working_buffer.data.inputB[i] << std::endl;
                     //     working_buffer.data.result[i] = working_buffer.data.inputA[i] * working_buffer.data.inputB[i];
