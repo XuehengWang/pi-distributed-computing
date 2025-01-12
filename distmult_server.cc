@@ -59,9 +59,12 @@ public:
     public:
     ComputeRPC(TaskHandler* handler, std::mutex* mu)
           : mu_(mu), task_handler_(handler), current_buffer_(-1){
+        
+        handler->initialize_buffers();
         // start with read
         writer_thread_ = std::thread(&ComputeRPC::writer, this);
         NextRead();
+        
     }
     ~ComputeRPC() {
       // stop_threads_ = true;
@@ -204,18 +207,19 @@ int main(int argc, char** argv) {
   absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
   absl::InitializeLog();
   
-  if (argc < 3) {
-    std::cerr << "Usage: " << argv[0] << " <task_type> <address>\n";
+  if (argc < 4) {
+    std::cerr << "Usage: " << argv[0] << " <task_type> <n> <<address>>\n";
     return EXIT_FAILURE;
   }
 
 
   std::string task_type = argv[1];
-  std::string address = argv[2];
+  std::string address = argv[3];
+  int n = atoi(argv[2]);
 
   if (task_type == "matrix") {
     try {
-      RunServer(task_type, 0, address);
+      RunServer(task_type, n, address);
     } catch (const std::exception& e) {
       std::cerr << "Error running server: " << e.what() << "\n";
       return EXIT_FAILURE;
