@@ -26,6 +26,7 @@ public:
     virtual void process_request(int buffer_id, int thread_id) = 0;
     virtual int check_response() = 0;
     virtual void add_resource(int thread_id) = 0;
+    virtual void initialize_buffers() = 0;
 
 };
 

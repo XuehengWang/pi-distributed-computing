@@ -12,14 +12,14 @@ message MatrixRequest {
     uint32 task_id = 1;
     uint32 ops = 2;
     uint32 n = 3;
-    repeated float inputa = 4;
-    repeated float inputb = 5;
+    repeated double inputa = 4;
+    repeated double inputb = 5;
 }
 
 message MatrixResponse {
     uint32 task_id = 1;
     uint32 n = 2;
-    repeated float result = 3;
+    repeated double result = 3;
 }
 
 

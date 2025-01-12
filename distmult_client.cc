@@ -153,7 +153,7 @@ class DistMultClient {
         int task_id;
         task_node_t *task;
         {
-          std::unique_lock<std::mutex> lock(task_lock_); 
+          std::unique_lock<std::mutex> lock(task_lock_);
           while (task_queue_.empty()) { 
             task_cv_.wait(lock, [this] { return !task_queue_.empty() || done_; });
           }
@@ -163,7 +163,7 @@ class DistMultClient {
           }
           task_id = task_queue_.front();
           // LOG(INFO) << "task queue is " << task_queue_.size() << ", task id is " << task_id;
-          task_queue_.pop();
+          task_queue_.pop(); 
           if (task_id == -1) { //stop
             Stop();
             return;
@@ -185,8 +185,7 @@ class DistMultClient {
         // if (it != on_fly_tasks.end()) {
         // task_node_t* task = it->second;
         create_request(task->task_id, task->ops, task->n, task->left, task->right, task->left_matrix, task->right_matrix);
-        
-        LOG(INFO) << "[ Client RPI " << task->assigned_rpi << " ] Sending request " << request_.task_id() << " with ops " << task->ops << ", input A[0] = " << request_.inputa()[0];
+        // LOG(INFO) << "[ Client RPI " << task->assigned_rpi << " ] Sending request " << request_.task_id() << " with ops " << task->ops << ", input A[0] = " << request_.inputa()[0];
         // LOG(INFO) << "input A[n^2-1] = " << request_.inputa()[request_.n()*request_.n()-1];
         StartWrite(&request_);
       }
@@ -324,6 +323,8 @@ public:
       writer_thread_ = std::thread(&ClusterManager::writer, this);
       reader_thread_ = std::thread(&ClusterManager::reader, this);
       random_id_ = 100;
+      auto now = std::chrono::high_resolution_clock::now();
+      start_time = std::chrono::duration<double>(now.time_since_epoch()).count();
     }
   
   ~ClusterManager() {
@@ -342,6 +343,11 @@ public:
         }
         LOG(INFO) << "All client joined!";
     }
+    auto now = std::chrono::high_resolution_clock::now();
+    double end = std::chrono::duration<double>(now.time_since_epoch()).count();
+
+    double duration = end - start_time;
+    std::cout << "Total time: " << duration << " seconds\n";
     client_map.clear();
   }
 
@@ -672,6 +678,7 @@ private:
     std::mutex thread_mutex_;
     std::vector<std::thread> client_threads_;
     //std::queue<matrix_t> intermediates_; // store intermediate results
+    double start_time;
 };
 
 int main(int argc, char** argv) {

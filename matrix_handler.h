@@ -15,9 +15,9 @@ struct task_compute_data_t {
     // struct matrix_1d_t *result;
     utils::FunctionID ops;
     uint32_t n;
-    float *inputA;
-    float *inputB;
-    float *result;
+    double *inputA;
+    double *inputB;
+    double *result;
 
     task_compute_data_t(uint32_t task_id, uint32_t n, utils::FunctionID ops)
         : task_id(task_id), ops(ops), n(n), inputA(nullptr),inputB(nullptr), result(nullptr) {}
@@ -59,6 +59,7 @@ public:
     void process_request(int buffer_id, int thread_id) override;
     int check_response() override;
     void add_resource(int thread_id) override;
+    void initialize_buffers() override;
 
 private:
     // We will use buffer_id (0/1) and compute_thread_id to locate buffer entry

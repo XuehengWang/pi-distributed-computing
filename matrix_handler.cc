@@ -17,15 +17,15 @@ MatrixClass::MatrixClass(uint32_t n)
 
 }
 
-    MatrixClass::~MatrixClass() {
+MatrixClass::~MatrixClass() {
     stop_threads();
 }
 
 
 int MatrixClass::select_next_buffer() {
     std::lock_guard<std::mutex> lock(resource_lock_);
-    uint32_t max_resource = resources_[3];
-    int max_thread_id = 3;
+    uint32_t max_resource = resources_[0];
+    int max_thread_id = 0;
     for (int i = 0; i < 4; ++i) {
         //std::cout << "resource from thread " << i << " is " << resources_[i] << std::endl;
         if (resources_[i] > max_resource) {
@@ -66,6 +66,42 @@ void MatrixClass::add_resource(int thread_id) {
     resources_[thread_id] += 1;
 }
 
+/* 
+Update: preallocate the Request and Response messages
+We first directly get the pointer to data at the begining, 
+if the message size does not change later, we can avoid resizing
+or reallocating memory during sending/receiving messages
+*/
+void MatrixClass::initialize_buffers() {
+    for (int i = 0; i < 8; i++) {
+        matrix_buffer_t &buffer = buffers_[i];
+        MatrixRequest &request = buffer.request;
+
+        // initialize buffer
+        /* Input */
+        // task_id and ops can change, but input size n is fixed now
+        buffer.data.n = n_;
+        
+        google::protobuf::RepeatedField<double>& inputa = *request.mutable_inputa();
+        google::protobuf::RepeatedField<double>& inputb = *request.mutable_inputb();
+        inputa.Resize(n_*n_, 0.0f); //resize once
+        inputb.Resize(n_*n_, 0.0f);
+        double* inputa_ptr = inputa.mutable_data();
+        double* inputb_ptr = inputb.mutable_data();
+        buffer.data.inputA = inputa_ptr;
+        buffer.data.inputB = inputb_ptr;
+
+        /* Output */
+        MatrixResponse& response = buffer.response;
+        google::protobuf::RepeatedField<double>& output = *response.mutable_result();
+        output.Resize(n_*n_, 0.0f);
+    
+        double* output_ptr = output.mutable_data();
+        buffer.data.result = output_ptr;
+
+    }
+}
+
 void MatrixClass::process_request(int buffer_id, int thread_id) {
     matrix_buffer_t &buffer = buffers_[buffer_id * 4 + thread_id];
     
@@ -75,37 +111,35 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
 
     if (operation == utils::FunctionID::ADDITION || operation == utils::FunctionID::MULTIPLICATION) {
 
-        //task_compute_data_t new_task(request.task_id(), request.n(), ADD); 
         //task_compute_data_t& new_task = buffer.data;
 
-        buffer.data.n = request.n();
+        //buffer.data.n = request.n();
+        
+        // verify successfully
+        // google::protobuf::RepeatedField<double>& inputa = *request.mutable_inputa();
+        // assert(inputa.size() == (buffer.data.n)*(buffer.data.n));
+
         buffer.data.task_id = request.task_id();
         buffer.data.ops = operation;
 
-
+/*
         // avoid input and result data copy
-        google::protobuf::RepeatedField<float>& input_field1 = *request.mutable_inputa();
-        google::protobuf::RepeatedField<float>& input_field2 = *request.mutable_inputb();
+        google::protobuf::RepeatedField<double>& input_field1 = *request.mutable_inputa();
+        google::protobuf::RepeatedField<double>& input_field2 = *request.mutable_inputb();
         // std::cout << "buffer.data.inputA.size = " << input_field1.size() << std::endl;
         // std::cout << "buffer.data.inputB.size = " << input_field2.size() << std::endl;
 
-        float* input_ptr1 = input_field1.mutable_data();
-        float* input_ptr2 = input_field2.mutable_data();
-
+        double* input_ptr1 = input_field1.mutable_data();
+        double* input_ptr2 = input_field2.mutable_data();
+        
+        buffer.data.inputA = reinterpret_cast<double*>(input_ptr1);
+        buffer.data.inputB = reinterpret_cast<double*>(input_ptr2);
+        
         // std::cout << "InputA elements: ";
         // for (int i = 0; i < input_field1.size(); ++i) {
         //     std::cout << input_ptr1[i] << " ";
         // }
         // std::cout << std::endl;
-
-        // std::cout << "InputB elements: ";
-        // for (int i = 0; i < input_field2.size(); ++i) {
-        //     std::cout << input_ptr2[i] << " ";
-        // }
-        // std::cout << std::endl;
-
-        buffer.data.inputA = reinterpret_cast<float*>(input_ptr1);
-        buffer.data.inputB = reinterpret_cast<float*>(input_ptr2);
         
         // std::cout << "buffer.data.inputA: " << buffer.data.inputA << std::endl;
         // std::cout << "buffer.data.inputB: " << buffer.data.inputB << std::endl;
@@ -116,18 +150,16 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
         //response.mutable_result()->Reserve(n);
         response.mutable_result()->Resize(n*n, 0);
         
-        google::protobuf::RepeatedField<float>& result_field = *response.mutable_result();
-        float* result_ptr = result_field.mutable_data();
+        google::protobuf::RepeatedField<double>& result_field = *response.mutable_result();
+        double* result_ptr = result_field.mutable_data();
 
         buffer.data.result = result_ptr; 
-
-        // std::cout << "buffer.data.result: " << buffer.data.result << std::endl;
+*/
         
-        // all good
-        // std::cout << "In processing data -> " << "1: " << int32_t(buffer.data.result[0]) << std::endl;
+        // all work
+        // std::cout << "buffer.data.result: " << buffer.data.result << std::endl;
+        // std::cout << "In processing data -> " << "1: " << int(buffer.data.result[0]) << std::endl;
         // std::cout << "2: " << *buffer.data.result << std::endl; 
-        // std::cout << "3: " << (int)*buffer.data.result << std::endl;
-        //buffer.data = new_task;           
     } else {
         std::cerr << "What?? ops is " << request.ops() << std::endl;
     }
@@ -178,11 +210,12 @@ void MatrixClass::initialize_threads() {
     for (uint32_t tid = 0; tid < 4; ++tid) {
         compute_threads_.emplace_back([this, tid]() {
             pin_thread_to_core(tid);
-            //matrix_buffer_t working_buffer;
 
             bli_init();
+            bli_thread_set_num_threads(1);
             double alpha = 1.0, beta = 0.0;
-            //obj_t A_blis, B_blis, C_blis;
+            // change to bli_dgemm(), so we do not need obj_t
+            // obj_t A_blis, B_blis, C_blis;
 
 
             // thread loop
@@ -194,12 +227,11 @@ void MatrixClass::initialize_threads() {
                         // wait for notify that a task is available
                         input_cv_[tid].wait(lock, [this, tid] { return !input_queue_[tid].empty(); });
                     }
-                    
                     // get a task by buffer id
                     buffer_id = input_queue_[tid].front();
                     input_queue_[tid].pop();
                     // std::cout << "Thread [" << tid << "]: gets a task from buffer " << buffer_id << std::endl;
-                }//lock.unlock();
+                }
                 
                 matrix_buffer_t &working_buffer = buffers_[buffer_id * 4 + tid];
                 std::cout << "Thread " << tid << " is processing task (" << working_buffer.data.task_id
@@ -209,7 +241,7 @@ void MatrixClass::initialize_threads() {
                 //std::cout << " inputA[0] before = " << (int)*working_buffer.data.inputA << std::endl;
                 //std::cout << " inputB[0] before = " << (int)*working_buffer.data.inputB << std::endl;
 
-                // simple real computation
+                // simple computation for test
                 //*(working_buffer.data.result) = *(working_buffer.data.input) + 1;
                 int n = working_buffer.data.n;
                 if (working_buffer.data.ops == utils::FunctionID::ADDITION){
@@ -221,15 +253,18 @@ void MatrixClass::initialize_threads() {
                 } else {
 
                     std::cout << "MULTIPLICATION" << std::endl;
-                    //bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.inputA, 1, n, &A_blis);
-                    //bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.inputB, 1, n, &B_blis);
-                    //bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.result, 1, n, &C_blis);
-                    bli_dgemm(BLIS_NO_TRANSPOSE, BLIS_NO_TRANSPOSE, n, n, n, &alpha, working_buffer.data.inputA, 1, n, working_buffer.data.inputB, 1, n, &beta, working_buffer.data.result, 1, n);
-                    //bli_gemm(&BLIS_ONE, &A_blis, &B_blis, &BLIS_ZERO, &C_blis);
+                    // bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.inputA, 1, n, &A_blis);
+                    // bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.inputB, 1, n, &B_blis);
+                    // bli_obj_create_with_attached_buffer(BLIS_FLOAT, n, n, working_buffer.data.result, 1, n, &C_blis);
+                    
+                    // bli_dgemm(&BLIS_ONE, &A_blis, &B_blis, &BLIS_ZERO, &C_blis);
                     // for (int i = 0; i < n*n; i++) {
                     //     //std::cout << working_buffer.data.result[i] << " = " << working_buffer.data.inputA[i] << " * " << working_buffer.data.inputB[i] << std::endl;
                     //     working_buffer.data.result[i] = working_buffer.data.inputA[i] * working_buffer.data.inputB[i];
                     // }
+                    bli_dgemm(BLIS_NO_TRANSPOSE, BLIS_NO_TRANSPOSE, n, n, n,
+                        &alpha, working_buffer.data.inputA, 1, n, working_buffer.data.inputB,
+                        1, n, &beta, working_buffer.data.result, 1, n);
                 }
                 
                 //simulate heavy work

@@ -36,23 +36,23 @@ public:
 
 // 2D representation
 struct matrix_t {
-    float** data;
+    double** data;
     size_t n;  // matrix size (nxn)
 
     matrix_t(size_t size);
     
-    matrix_t(size_t size, float* raw_data);//constructor using 1D array
+    matrix_t(size_t size, double* raw_data);//constructor using 1D array
     ~matrix_t(); 
 
     // Constructor that builds matrix from a MatrixResponse
     matrix_t(const distmult::MatrixResponse& msg) {
-        const google::protobuf::RepeatedField<float>& result = msg.result();
+        const google::protobuf::RepeatedField<double>& result = msg.result();
         size_t s = static_cast<size_t>(std::sqrt(result.size()));  // Assuming square matrix
 
         // Allocate memory for the matrix (2D array)
-        data = new float*[s];
+        data = new double*[s];
         for (size_t i = 0; i < s; ++i) {
-            data[i] = new float[s];
+            data[i] = new double[s];
         }
 
         // Populate the matrix from result
@@ -116,14 +116,14 @@ struct matrix_t {
     
 
     // pointer to the top-left of a submatrix
-    float* get_submatrix(size_t row_start, size_t col_start, size_t submatrix_size);
+    double* get_submatrix(size_t row_start, size_t col_start, size_t submatrix_size);
 
     Submatrix track_submatrix(size_t row_start, size_t col_start, size_t submatrix_size) {
         return Submatrix(row_start, col_start, submatrix_size);
     }
 
     // for 1D representation
-    std::vector<float> get_submatrix_data(size_t row_start, size_t col_start, size_t submatrix_size);
+    std::vector<double> get_submatrix_data(size_t row_start, size_t col_start, size_t submatrix_size);
 
     void print_matrix() const;
 
