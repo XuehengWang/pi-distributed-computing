@@ -122,7 +122,7 @@ int create_tasks(const size_t matrix_size, const size_t submatrix_size, std::vec
         while (base >= 1) {
             for (size_t j = 0; j < base; ++j) {
                 tasks_count++;
-                task_node_t* new_task = new task_node_t(ADDITION, submatrix_size, matrix_size);
+                task_node_t* new_task = new task_node_t(MULTIPLICATION, submatrix_size, matrix_size);
                 //auto new_task = std::make_shared<task_node_t>(ADDITION, submatrix_size);
                 // new_task->left = nullptr;  // Wait for result
                 

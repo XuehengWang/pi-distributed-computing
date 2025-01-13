@@ -194,7 +194,7 @@ void RunServer(const std::string& task_type, uint32_t task_size, const std::stri
   ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
-  builder.SetMaxReceiveMessageSize(128 * 1024 * 1024);  // 64 MB, default is 4MB for incoming messages
+  builder.SetMaxReceiveMessageSize(256 * 1024 * 1024);  // 64 MB, default is 4MB for incoming messages
   std::unique_ptr<Server> server(builder.BuildAndStart());
   std::cout << "Server listening on " << server_address << std::endl;
 

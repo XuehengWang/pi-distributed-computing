@@ -127,12 +127,13 @@ class DistMultClient {
       }
         
       void Stop() {
-        StartWritesDone();
+        WriteNull();
         LOG(INFO) << "Stop!!";
+        // StartWritesDone();
+        
       }
 
       void OnDone(const Status& s) override {
-        LOG(INFO) << "WHO CALLED ME? DONE";
         std::unique_lock<std::mutex> l(mu_);
         status_ = s;
         done_ = true;
@@ -202,6 +203,13 @@ class DistMultClient {
         LOG(INFO) << "[ Client RPI " << task->assigned_rpi << " ] Sending request " << request_.task_id() << " with ops " << task->ops << ", input A[0] = " << request_.inputa()[0];
         // LOG(INFO) << "input A[n^2-1] = " << request_.inputa()[request_.n()*request_.n()-1];
         StartWrite(&request_);
+      }
+
+      void WriteNull() {
+        MatrixRequest request_finish;
+        request_finish.set_task_id(-1);  
+        StartWrite(&request_finish);
+        StartWritesDone();
       }
 
       void create_request(int task_id, FunctionID ops, int n, Submatrix subA, Submatrix subB, matrix_t *inputA, matrix_t *inputB) {
@@ -393,7 +401,7 @@ private:
             LOG(INFO) << "Started RPC for address: " << address;
             // increase channel size
             grpc::ChannelArguments channel_args;
-            channel_args.SetMaxReceiveMessageSize(128 * 1024 * 1024);  // 64 MB
+            channel_args.SetMaxReceiveMessageSize(256 * 1024 * 1024);  // 64 MB
 
             std::shared_ptr<DistMultClient> client = std::make_shared<DistMultClient>(
               grpc::CreateCustomChannel(address, grpc::InsecureChannelCredentials(), channel_args),
@@ -625,9 +633,9 @@ private:
           std::cout << "Done both children -> Add parent to the task queue!" << std::endl;
           LOG(INFO) << "Done both children -> Add parent to the task queue!";
           {
-            //std::unique_lock<std::mutex> lock(task_lock_);
-            initial_tasks_.insert(initial_tasks_.begin(), parent);
-            //initial_tasks_.push_back(parent);
+            std::unique_lock<std::mutex> lock(task_lock_);
+            //initial_tasks_.insert(initial_tasks_.begin(), parent);
+            initial_tasks_.push_back(parent);
             task_cv_.notify_one();
           }
         }

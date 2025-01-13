@@ -9,7 +9,7 @@ using distmult::MatrixResponse;
 namespace matrixclass {
 
 struct task_compute_data_t {
-    uint32_t task_id;
+    int32_t task_id;
     // struct matrix_1d_t *MatrixA;
     // struct matrix_1d_t *MatrixB;
     // struct matrix_1d_t *result;
@@ -19,15 +19,15 @@ struct task_compute_data_t {
     double *inputB;
     double *result;
 
-    task_compute_data_t(uint32_t task_id, uint32_t n, utils::FunctionID ops)
+    task_compute_data_t(int32_t task_id, uint32_t n, utils::FunctionID ops)
         : task_id(task_id), ops(ops), n(n), inputA(nullptr),inputB(nullptr), result(nullptr) {}
 };
 
 struct task_result_t {
     uint32_t thread_id;  //0-3
     uint32_t buffer_id;  //0 or 1
-    uint32_t task_id; 
-    task_result_t(uint32_t thread_id, uint32_t buffer_id, uint32_t task_id) 
+    int32_t task_id; 
+    task_result_t(uint32_t thread_id, uint32_t buffer_id, int32_t task_id) 
         : thread_id(thread_id), buffer_id(buffer_id), task_id(task_id) {}
 };
 

@@ -106,6 +106,10 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
     matrix_buffer_t &buffer = buffers_[buffer_id * 4 + thread_id];
     
     MatrixRequest &request = buffer.request;
+    if (request.task_id() == -1) {
+        std::cout << "RECEIVED -1" << std::endl;
+        stop_threads();
+    }
 
     utils::FunctionID operation = static_cast<utils::FunctionID>(request.ops());
 
@@ -217,33 +221,42 @@ void MatrixClass::initialize_threads() {
             // change to bli_dgemm(), so we do not need obj_t
             obj_t A_blis, B_blis, C_blis;
 
-
+            bool first_compute = true;
+            int count = 0;
+            long long start_time;
+            int n = 0;
+            
             // thread loop
             while (!stop_flag_) {
+                std::cout << "stop flag of " << tid << " is " << stop_flag_ << std::endl;
                 uint32_t buffer_id;
                 {
                     std::unique_lock<std::mutex> lock(input_locks_[tid]);
-                    while (input_queue_[tid].empty()) {
+                    while (input_queue_[tid].empty() && !stop_flag_) {
                         // wait for notify that a task is available
-                        input_cv_[tid].wait(lock, [this, tid] { return !input_queue_[tid].empty(); });
+                        input_cv_[tid].wait(lock, [this, tid] { return !input_queue_[tid].empty() || stop_flag_; });
+                    }
+                    if (stop_flag_) {
+                        break;
                     }
                     // get a task by buffer id
                     buffer_id = input_queue_[tid].front();
                     input_queue_[tid].pop();
                     // std::cout << "Thread [" << tid << "]: gets a task from buffer " << buffer_id << std::endl;
                 }
+                if (first_compute) {
+                    first_compute = false;
+                    auto now = std::chrono::high_resolution_clock::now();
+                    start_time = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
+                }
                 
                 matrix_buffer_t &working_buffer = buffers_[buffer_id * 4 + tid];
                 std::cout << "Thread " << tid << " is processing task (" << working_buffer.data.task_id
                         << ") from buffer " << (int)buffer_id << std::endl;
 
-                //std::cout << " result[0] before = " << (int)*working_buffer.data.result << std::endl;
-                //std::cout << " inputA[0] before = " << (int)*working_buffer.data.inputA << std::endl;
-                //std::cout << " inputB[0] before = " << (int)*working_buffer.data.inputB << std::endl;
-
                 // simple computation for test
                 //*(working_buffer.data.result) = *(working_buffer.data.input) + 1;
-                int n = working_buffer.data.n;
+                n = working_buffer.data.n;
                 if (working_buffer.data.ops == utils::FunctionID::ADDITION){
                     std::cout << "ADDITION" << std::endl;
                     for (int i = 0; i < n*n; i++) {
@@ -253,25 +266,25 @@ void MatrixClass::initialize_threads() {
                 } else {
 
                     std::cout << "MULTIPLICATION" << std::endl;
-                    bli_obj_create_with_attached_buffer(BLIS_DOUBLE, n, n, working_buffer.data.inputA, 1, n, &A_blis);
-                    bli_obj_create_with_attached_buffer(BLIS_DOUBLE, n, n, working_buffer.data.inputB, 1, n, &B_blis);
-                    bli_obj_create_with_attached_buffer(BLIS_DOUBLE, n, n, working_buffer.data.result, 1, n, &C_blis);
+                    // bli_obj_create_with_attached_buffer(BLIS_DOUBLE, n, n, working_buffer.data.inputA, 1, n, &A_blis);
+                    // bli_obj_create_with_attached_buffer(BLIS_DOUBLE, n, n, working_buffer.data.inputB, 1, n, &B_blis);
+                    // bli_obj_create_with_attached_buffer(BLIS_DOUBLE, n, n, working_buffer.data.result, 1, n, &C_blis);
                     
-                    bli_gemm(&BLIS_ONE, &A_blis, &B_blis, &BLIS_ZERO, &C_blis);
+                    //bli_gemm(&BLIS_ONE, &A_blis, &B_blis, &BLIS_ZERO, &C_blis);
                     // for (int i = 0; i < n*n; i++) {
                     //     //std::cout << working_buffer.data.result[i] << " = " << working_buffer.data.inputA[i] << " * " << working_buffer.data.inputB[i] << std::endl;
                     //     working_buffer.data.result[i] = working_buffer.data.inputA[i] * working_buffer.data.inputB[i];
                     // }
-                    //bli_dgemm(BLIS_NO_TRANSPOSE, BLIS_NO_TRANSPOSE, n, n, n,
-                        //&alpha, working_buffer.data.inputA, 1, n, working_buffer.data.inputB,
-                        //1, n, &beta, working_buffer.data.result, 1, n);
+                    bli_dgemm(BLIS_NO_TRANSPOSE, BLIS_NO_TRANSPOSE, n, n, n,
+                        &alpha, working_buffer.data.inputA, 1, n, working_buffer.data.inputB,
+                        1, n, &beta, working_buffer.data.result, 1, n);
                 }
                 
                 //simulate heavy work
                 //std::this_thread::sleep_for(std::chrono::seconds(1));
                 //std::this_thread::sleep_for(std::chrono::microseconds(200));
 
-                // std::cout << "Thread " << tid << " results[0] = " << *(working_buffer.data.result) << std::endl;
+                std::cout << "Thread " << tid << " results[0] = " << *(working_buffer.data.result) << std::endl;
                 // put the result into output queue
                 // task_result_t result(tid, buffer_id, working_buffer.data.task_id);
                 int task_id;
@@ -284,15 +297,35 @@ void MatrixClass::initialize_threads() {
    
                 }
                 output_cv_.notify_one(); //TODO: move out?
+                count++;
                 std::cout << "Thread " << tid << " pushed task "<< working_buffer.data.task_id << " : " << task_id << ", tasks_pending increased to " << tasks_pending << std::endl;
             }
-            bli_finalize();
+            //bli_finalize();
+            auto now = std::chrono::high_resolution_clock::now();
+            auto end_time = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
+            long long duration_us = end_time - start_time;
+            
+            long long num_ops = count * (2 * std::pow(n, 3) - std::pow(n, 2));
+            double gflops = (num_ops / duration_us) * 1e6 / 1e9;  
+            std::this_thread::sleep_for(std::chrono::seconds(tid));
+            std::cout << "GFLOPs of thread " << tid << " is " << gflops << std::endl;
+            std::cout << "count is " << count << std::endl;
+            std::cout << "n is " << n << std::endl;
+            std::cout << "num_ops is " << num_ops << std::endl;
+            std::cout << "duration is " << duration_us/1e6 << std::endl;
+            
+
+
         });
     }
 }
     
 void MatrixClass::stop_threads() {
     stop_flag_ = true;
+    std::cout << "In stopping threads... " << stop_flag_ << std::endl;
+    for (int i = 0; i < 4; i++) {
+        input_cv_[i].notify_all();
+    }
     for (auto& thread : compute_threads_) {
         if (thread.joinable()) {
             thread.join();
