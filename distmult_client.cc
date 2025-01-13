@@ -171,22 +171,20 @@ class DistMultClient {
             task_cv_.wait(lock, [this] { return !task_queue_.empty() || done_; });
           }
           if (done_) {
-            LOG(INFO) << "CALLED STOP 1";
             Stop();
             return;
           }
           task_id = task_queue_.front();
           // LOG(INFO) << "task queue is " << task_queue_.size() << ", task id is " << task_id;
           task_queue_.pop();
-          if (task_id == -1) { //stop
-            LOG(INFO) << "CALLED STOP 1";
-            Stop();
-            return;
-          }
-          auto it = on_fly_tasks.find(task_id);
-          // LOG(INFO) << "found?";
-          task = it->second;
         }
+        if (task_id == -1) { //stop
+          Stop();
+          return;
+        }
+        auto it = on_fly_tasks.find(task_id);
+        // LOG(INFO) << "found?";
+        task = it->second;
 
         // std::queue<int> temp_queue = task_queue_;  
         // std::cout << "Queue contents: ";
@@ -393,9 +391,14 @@ private:
         // create_matrix_rpc(num_rpi_, addresses[i]);
         std::thread rpc_thread([this, address, i]() {
             LOG(INFO) << "Started RPC for address: " << address;
+            // increase channel size
+            grpc::ChannelArguments channel_args;
+            channel_args.SetMaxReceiveMessageSize(128 * 1024 * 1024);  // 64 MB
+
             std::shared_ptr<DistMultClient> client = std::make_shared<DistMultClient>(
-              grpc::CreateChannel(address, grpc::InsecureChannelCredentials()),
+              grpc::CreateCustomChannel(address, grpc::InsecureChannelCredentials(), channel_args),
               result_queue_, result_cv_, result_lock_, submatrix_size_);
+
             client_map[i] = client;
             LOG(INFO) << "Client RPC started for RPI_id: " << i;
             client->ComputeMatrix();
