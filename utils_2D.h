@@ -25,19 +25,18 @@ public:
     size_t col_start;
     size_t size;
     bool active;
-    size_t original_size;
 
     bool get_status() {
         return active;
     }
 
-    Submatrix(size_t row, size_t col, size_t s, size_t parent_s)
-        : row_start(row), col_start(col), size(s), active(false), original_size(parent_s) {}
+    Submatrix(size_t row, size_t col, size_t s)
+        : row_start(row), col_start(col), size(s), active(false) {}
 };
 
 // 2D representation
 struct matrix_t {
-    double* data;
+    double** data;
     size_t n;  // matrix size (nxn)
 
     matrix_t(size_t size);
@@ -48,14 +47,23 @@ struct matrix_t {
     // Constructor that builds matrix from a MatrixResponse
     matrix_t(const distmult::MatrixResponse& msg) {
         const google::protobuf::RepeatedField<double>& result = msg.result();
-        size_t s = static_cast<size_t>(std::sqrt(result.size()));  // square matrix
+        size_t s = static_cast<size_t>(std::sqrt(result.size()));  // Assuming square matrix
 
         // Allocate memory for the matrix (2D array)
-        data = new double[s*s];
-        for (size_t i = 0; i < s*s; ++i) {
-            data[i] = result[i];
+        data = new double*[s];
+        for (size_t i = 0; i < s; ++i) {
+            data[i] = new double[s];
         }
 
+        // Populate the matrix from result
+        size_t idx = 0;
+        for (size_t i = 0; i < s; ++i) {
+            for (size_t j = 0; j < s; ++j) {
+                data[i][j] = result[idx++];
+            }
+        }
+
+        //std::cout << "BUILD from response, n is " << s << std::endl;
         n = s;
     }
 
@@ -69,9 +77,9 @@ struct matrix_t {
     // Move Assignment Operator
     matrix_t& operator=(matrix_t&& other) noexcept {
         if (this != &other) {
-            // for (size_t i = 0; i < n; ++i) {
-            //     delete[] data[i];
-            // }
+            for (size_t i = 0; i < n; ++i) {
+                delete[] data[i];
+            }
             delete[] data;
 
             n = other.n;
@@ -84,34 +92,42 @@ struct matrix_t {
         return *this;
     }
 
-    //void get_submatrix_data(const Submatrix& submatrix, double *message, double *data, const std::string& pos) {
-    void get_submatrix_data(const Submatrix& submatrix, double *message, double *data) {
-        if (submatrix.row_start == 0 && submatrix.col_start == 0 && submatrix.size == submatrix.original_size) {
-            std::copy(data, data + submatrix.size * submatrix.size, message);
+    //std::vector<int32_t>
+    void get_submatrix_data(const Submatrix& submatrix, distmult::MatrixRequest& request, const std::string& pos) {
+        //std::vector<int32_t> submatrix_data;
+        if (pos == "inputa") {
+            std::cout << "size " << submatrix.size << std::endl;
+            for (size_t i = 0; i < submatrix.size; ++i) {
+                for (size_t j = 0; j < submatrix.size; ++j) {
+                    request.add_inputa(data[submatrix.row_start + i][submatrix.col_start + j]);
+                }
+            }
         } else {
-            for (int i = 0; i < submatrix.size; ++i) {
-                int row_index = submatrix.row_start + i;
-                int source_offset = row_index * submatrix.original_size + submatrix.col_start; 
-                int destination_offset = i * submatrix.size; 
-                std::copy(data + source_offset, data + source_offset + submatrix.size, message + destination_offset);
+            for (size_t i = 0; i < submatrix.size; ++i) {
+                for (size_t j = 0; j < submatrix.size; ++j) {
+                    request.add_inputb(data[submatrix.row_start + i][submatrix.col_start + j]);
+                }
             }
         }
+        
+        //return submatrix_data;
     }
 
+    
 
-//     // pointer to the top-left of a submatrix
-//     double* get_submatrix(size_t row_start, size_t col_start, size_t submatrix_size);
+    // pointer to the top-left of a submatrix
+    double* get_submatrix(size_t row_start, size_t col_start, size_t submatrix_size);
 
-    Submatrix track_submatrix(size_t row_start, size_t col_start, size_t submatrix_size, size_t matrix_size) {
-        return Submatrix(row_start, col_start, submatrix_size, matrix_size);
+    Submatrix track_submatrix(size_t row_start, size_t col_start, size_t submatrix_size) {
+        return Submatrix(row_start, col_start, submatrix_size);
     }
 
-//     // for 1D representation
-//     std::vector<double> get_submatrix_data(size_t row_start, size_t col_start, size_t submatrix_size);
+    // for 1D representation
+    std::vector<double> get_submatrix_data(size_t row_start, size_t col_start, size_t submatrix_size);
 
-     void print_matrix() const;
+    void print_matrix() const;
 
-//     void print_submatrix(size_t row_start, size_t col_start, size_t submatrix_size) const;
+    void print_submatrix(size_t row_start, size_t col_start, size_t submatrix_size) const;
 };
 
 
@@ -136,9 +152,9 @@ struct task_node_t {
     task_node_t* left_child;
     task_node_t* right_child;
 
-    task_node_t(FunctionID ops, size_t n, size_t parent_n)
+    task_node_t(FunctionID ops, size_t n)
         : assigned_rpi(-1), ops(ops), n(n), parent(nullptr), left_child(nullptr), right_child(nullptr),
-        left(0, 0, n, parent_n), right(0, 0, n, parent_n), result(0, 0, n, parent_n) {}
+        left(0, 0, n), right(0, 0, n), result(0,0,n) {}
 };
 
 // // can be found in task_map

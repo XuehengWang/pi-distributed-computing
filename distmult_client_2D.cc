@@ -46,22 +46,20 @@ using utils::Submatrix;
 
 class DistMultClient {
  public:
-  DistMultClient(std::shared_ptr<Channel> channel, std::queue<int>& result_queue, std::condition_variable& result_cv, std::mutex& result_lock, int submatrix_size)
-      : stub_(DistMultService::NewStub(channel)), result_queue_(result_queue), result_cv_(result_cv), result_lock_(result_lock), submatrix_size_(submatrix_size) {}
+  DistMultClient(std::shared_ptr<Channel> channel, std::queue<int>& result_queue, std::condition_variable& result_cv, std::mutex& result_lock)
+      : stub_(DistMultService::NewStub(channel)), result_queue_(result_queue), result_cv_(result_cv), result_lock_(result_lock) {}
   
   void ComputeMatrix() {
     class ComputeRPC : public grpc::ClientBidiReactor<MatrixRequest, MatrixResponse> {
     public:
       explicit ComputeRPC(DistMultService::Stub* stub, std::queue<int>& result_queue, std::condition_variable& result_cv, std::mutex& result_lock, std::unordered_map<int, task_node_t*>& tasks
-      , std::mutex& task_lock, std::condition_variable& task_cv, std::queue<int>& task_queue, int submatrix_size)
-          : result_queue_(result_queue), result_cv_(result_cv), result_lock_(result_lock), on_fly_tasks(tasks), task_queue_(task_queue), task_cv_(task_cv), 
-          task_lock_(task_lock), submatrix_size_(submatrix_size){
+      , std::mutex& task_lock, std::condition_variable& task_cv, std::queue<int>& task_queue)
+          : result_queue_(result_queue), result_cv_(result_cv), result_lock_(result_lock), on_fly_tasks(tasks), task_queue_(task_queue), task_cv_(task_cv), task_lock_(task_lock){
         
         stub->async()->ComputeMatrix(&context_, this);
         StartCall();
         LOG(INFO) << "Client RPC: RPC Call initiated";
         
-        initialize_request();
         // writer_thread_ = std::thread(&ComputeRPC::writer, this);
         NextWrite();
         LOG(INFO) << "Client RPC: start writer and reader threads...";
@@ -110,7 +108,7 @@ class DistMultClient {
           // save output & send back task_id afterward
           //convertRepeatedToPtr(response_, task->result);
           matrix_t *mat = new matrix_t(response_);       
-          task->result = Submatrix(0, 0, n, n);         
+          task->result = Submatrix(0, 0, n);         
           task->result_matrix = mat;
 
           {
@@ -128,11 +126,10 @@ class DistMultClient {
         
       void Stop() {
         StartWritesDone();
-        LOG(INFO) << "Stop!!";
+        // LOG(INFO) << "Stop!!";
       }
 
       void OnDone(const Status& s) override {
-        LOG(INFO) << "WHO CALLED ME? DONE";
         std::unique_lock<std::mutex> l(mu_);
         status_ = s;
         done_ = true;
@@ -152,34 +149,22 @@ class DistMultClient {
         NextWrite();
       }
 
-      void initialize_request() {
-        google::protobuf::RepeatedField<double>& inputa = *request_.mutable_inputa();
-        google::protobuf::RepeatedField<double>& inputb = *request_.mutable_inputb();
-        inputa.Resize(submatrix_size_*submatrix_size_, 0.0f);
-        inputb.Resize(submatrix_size_*submatrix_size_, 0.0f);
-        inputa_ptr_ = inputa.mutable_data();
-        inputb_ptr_ = inputb.mutable_data();
-        
-      }
-
       void NextWrite() {
         int task_id;
         task_node_t *task;
         {
-          std::unique_lock<std::mutex> lock(task_lock_); 
+          std::unique_lock<std::mutex> lock(task_lock_);
           while (task_queue_.empty()) { 
             task_cv_.wait(lock, [this] { return !task_queue_.empty() || done_; });
           }
           if (done_) {
-            LOG(INFO) << "CALLED STOP 1";
             Stop();
             return;
           }
           task_id = task_queue_.front();
           // LOG(INFO) << "task queue is " << task_queue_.size() << ", task id is " << task_id;
-          task_queue_.pop();
+          task_queue_.pop(); 
           if (task_id == -1) { //stop
-            LOG(INFO) << "CALLED STOP 1";
             Stop();
             return;
           }
@@ -200,8 +185,7 @@ class DistMultClient {
         // if (it != on_fly_tasks.end()) {
         // task_node_t* task = it->second;
         create_request(task->task_id, task->ops, task->n, task->left, task->right, task->left_matrix, task->right_matrix);
-        
-        LOG(INFO) << "[ Client RPI " << task->assigned_rpi << " ] Sending request " << request_.task_id() << " with ops " << task->ops << ", input A[0] = " << request_.inputa()[0];
+        // LOG(INFO) << "[ Client RPI " << task->assigned_rpi << " ] Sending request " << request_.task_id() << " with ops " << task->ops << ", input A[0] = " << request_.inputa()[0];
         // LOG(INFO) << "input A[n^2-1] = " << request_.inputa()[request_.n()*request_.n()-1];
         StartWrite(&request_);
       }
@@ -210,12 +194,12 @@ class DistMultClient {
           request_.set_task_id(task_id);  
           request_.set_ops(ops);      
           request_.set_n(n); 
-          // request_.clear_inputa();
-          // request_.clear_inputb();
+          request_.clear_inputa();
+          request_.clear_inputb();
           // LOG(INFO) << "n = " << n << ", subA = "<< subA.row_start << ", ";  
 
-          inputA->get_submatrix_data(subA, inputa_ptr_, inputA->data);
-          inputB->get_submatrix_data(subB, inputb_ptr_, inputB->data);
+          inputA->get_submatrix_data(subA, request_, "inputa");
+          inputB->get_submatrix_data(subB, request_, "inputb");
 
           // for (size_t i = 0; i < n*n; ++i) {
           //   request_.add_inputa(inputA[i]);  
@@ -241,8 +225,6 @@ class DistMultClient {
       ClientContext context_;
       MatrixResponse response_;
       MatrixRequest request_;
-      double* inputa_ptr_;
-      double* inputb_ptr_;
 
       std::thread writer_thread_;
 
@@ -261,12 +243,9 @@ class DistMultClient {
       std::condition_variable cv_;
       Status status_;
       bool done_ = false;
-
-      int submatrix_size_;
-
     };
 
-    ComputeRPC chatter(stub_.get(), result_queue_, result_cv_, result_lock_, on_fly_tasks, task_lock_, task_cv_, task_queue_, submatrix_size_);
+    ComputeRPC chatter(stub_.get(), result_queue_, result_cv_, result_lock_, on_fly_tasks, task_lock_, task_cv_, task_queue_);
     //std::shared_ptr<ComputeRPC> rpc_handle = std::make_shared<ComputeRPC>(stub_.get(), result_queue_, result_cv_, result_lock_);
     // LOG(INFO) << "Client thread await..."; 
     //ComputeRPC *handle = new ComputeRPC(stub_.get());
@@ -315,22 +294,20 @@ class DistMultClient {
   std::mutex task_lock_;
   std::condition_variable task_cv_;
   std::queue<int> task_queue_;
-
-  int submatrix_size_;
 };
 
 
 class ClusterManager {
 public:
-    ClusterManager(std::string &task_type, int num_rpi, std::vector<std::string>& addresses, int task_size, int subtask_size): num_rpi_(0) {
+    ClusterManager(std::string &task_type, int num_rpi, std::vector<std::string>& addresses): num_rpi_(0) {
       // LOG(INFO) << task_type;
       if (task_type == "matrix") {
         
         initialize_matrix_rpc(num_rpi, addresses);
 
-        matrix_size_ = task_size;
-        submatrix_size_ = subtask_size;
-        std::this_thread::sleep_for(std::chrono::seconds(num_rpi * 10));
+        matrix_size_ = 1024; // fixed now
+        submatrix_size_ = 128;
+        std::this_thread::sleep_for(std::chrono::seconds(5));
         initialize_matrix_tasks(matrix_size_, submatrix_size_);
         
       } else {
@@ -359,7 +336,7 @@ public:
       reader_thread_.join();
       LOG(INFO) << "Reader joined!";
     }
-    
+
     for (std::thread& t : client_threads_) {
         if (t.joinable()) {
             t.join();
@@ -371,7 +348,6 @@ public:
 
     double duration = end - start_time;
     std::cout << "Total time: " << duration << " seconds\n";
-
     client_map.clear();
   }
 
@@ -395,7 +371,7 @@ private:
             LOG(INFO) << "Started RPC for address: " << address;
             std::shared_ptr<DistMultClient> client = std::make_shared<DistMultClient>(
               grpc::CreateChannel(address, grpc::InsecureChannelCredentials()),
-              result_queue_, result_cv_, result_lock_, submatrix_size_);
+              result_queue_, result_cv_, result_lock_);
             client_map[i] = client;
             LOG(INFO) << "Client RPC started for RPI_id: " << i;
             client->ComputeMatrix();
@@ -428,7 +404,7 @@ private:
     // }
 
     void initialize_matrix_tasks(int matrix_size, int submatrix_size) {
-      whole_matrix_ = new matrix_t(matrix_size); //initialize matrix data in 2D format
+      whole_matrix_ = new matrix_t(1024); //initialize matrix data in 2D format
       //whole_matrix_->print_matrix();
       create_tasks(matrix_size, submatrix_size, all_tasks_, initial_tasks_, whole_matrix_);
       //LOG(INFO) << "Created " << all_tasks_.size() << " in total, " << "starting with " << initial_tasks_.size() << " multiplications...";
@@ -577,7 +553,6 @@ private:
           LOG(INFO) << "Subtree " << subtree << " completed!!";
           std::cout << "Subtree " << subtree << " completed!!" << std::endl;
           remaining_tasks_.fetch_sub(1, std::memory_order_relaxed);
-          //remaining_tasks_--;
           LOG(INFO) << "Remaining tasks becomes " << remaining_tasks_;
           std::cout << "Remaining tasks becomes " << remaining_tasks_ << std::endl;
           //results_.push(std::move(mat));
@@ -622,9 +597,9 @@ private:
           std::cout << "Done both children -> Add parent to the task queue!" << std::endl;
           LOG(INFO) << "Done both children -> Add parent to the task queue!";
           {
-            //std::unique_lock<std::mutex> lock(task_lock_);
-            initial_tasks_.insert(initial_tasks_.begin(), parent);
-            //initial_tasks_.push_back(parent);
+            std::unique_lock<std::mutex> lock(task_lock_);
+            //std::shared_ptr<task_node_t> parent_ptr(parent);
+            initial_tasks_.push_back(parent);
             task_cv_.notify_one();
           }
         }
@@ -643,21 +618,19 @@ private:
       LOG(INFO) << "In clean-up...";
       assert(initial_tasks_.empty());
       assert(on_fly_tasks.size() == 0);
-
-      // print matrix
       // LOG(INFO) << "ALL RESULTS:";
 
       // while (!results_.empty()) {
       //   results_.front()->print_matrix(); // Call print() for the front element
       //   results_.pop();           // Remove the element after printing
       // }
+
       // whole_matrix_->print_matrix();
 
       task_cv_.notify_all();  
       // stop & close for all client rpc
       for (auto& [key, rpc] : client_map) {
         if (rpc) {
-            LOG(INFO) << "RPC stop??";
           rpc->Stop();
         }
       }
@@ -669,7 +642,7 @@ private:
     std::mutex parent_lock_;
 
     int num_rpi_;
-    //int remaining_tasks_; //(1024/128)^2
+    // int remaining_tasks_; //(1024/128)^2
     std::atomic<int> remaining_tasks_{0};
     matrix_t *whole_matrix_;
     //std::vector<std::shared_ptr<matrix_t>> results_;
@@ -693,7 +666,6 @@ private:
 
     std::thread reader_thread_;
     std::thread writer_thread_;
-
     std::condition_variable task_cv_;
     std::mutex task_lock_;
 
@@ -715,28 +687,26 @@ int main(int argc, char** argv) {
   absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
   absl::InitializeLog();
 
-  if (argc < 5) {
-    std::cerr << "Usage: " << argv[0] << " <task_type> <task_n> <subtask_n> <num_RPI> <address_1> ... <address_n>\n";
+  if (argc < 3) {
+    std::cerr << "Usage: " << argv[0] << " <task_type> <num_RPI> <address_1> ... <address_n>\n";
     return EXIT_FAILURE;
   }
 
   std::string task_type = argv[1];
-  int num_RPI = std::stoi(argv[4]); // now we use fixed size of RPI workers
-  int task_size = std::stoi(argv[2]);
-  int subtask_size = std::stoi(argv[3]);
+  int num_RPI = std::stoi(argv[2]); // now we use fixed size of RPI workers
 
-  if (argc != (5 + num_RPI)) {
+  if (argc != (3 + num_RPI)) {
     std::cerr << "Error: Number of addresses provided does not match num_RPI.\n";
     return EXIT_FAILURE;
   }
 
   std::vector<std::string> addresses;
   for (int i = 0; i < num_RPI; ++i) {
-    std::string address = argv[5 + i];
+    std::string address = argv[3 + i];
     addresses.push_back(address);
     // manager.create_client(i, address);
   }
 
-  ClusterManager manager(task_type, num_RPI, addresses, task_size, subtask_size);
+  ClusterManager manager(task_type, num_RPI, addresses);
   return EXIT_SUCCESS;
 }
