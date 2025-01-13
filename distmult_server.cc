@@ -82,11 +82,11 @@ public:
       // call here after NextRead, current_buffer_ should not change
       void OnReadDone(bool ok) override {
         if (ok) {
-          LOG(INFO) << "IO reader: Finish reading a task from RPC, current_buffer_ is " << current_buffer_;
+          //LOG(INFO) << "IO reader: Finish reading a task from RPC, current_buffer_ is " << current_buffer_;
           int buffer_id = current_buffer_ / 4;
           int thread_id = current_buffer_ % 4;
           task_handler_->process_request(buffer_id, thread_id);
-          LOG(INFO) << "IO reader: Already assigned task to thread " << thread_id << " buffer " << buffer_id;
+          //LOG(INFO) << "IO reader: Already assigned task to thread " << thread_id << " buffer " << buffer_id;
           //check write
           //UPDATE: NextWrite();
           NextRead();
@@ -114,7 +114,7 @@ public:
     //if no data to wrtie, start NextRead()
       void NextWrite() {
         int all_id = task_handler_->check_response();
-        LOG(INFO) << "Server writer: Checking response...buffer id is " << all_id;
+        //LOG(INFO) << "Server writer: Checking response...buffer id is " << all_id;
         
         if (all_id == -1) { //no more response to process
           //NextRead();
@@ -126,7 +126,7 @@ public:
           response_ = (MatrixResponse *)task_handler_->get_buffer_response(buffer_id, thread_id);
           StartWrite(&*(MatrixResponse *)response_);
           task_handler_->add_resource(thread_id);
-          LOG(INFO) << "Server writer: Has wrritten result from thread " << thread_id;
+          //LOG(INFO) << "Server writer: Has wrritten result from thread " << thread_id;
           //UPDATE
           //NextWrite();
         }
@@ -137,12 +137,12 @@ public:
         if (current_buffer_ == -1) {
           std::cerr << "ERROR: No buffer available for receiving new request!" << std::endl;
         } else {
-          LOG(INFO) << "Select next buffer " << current_buffer_;
+          //LOG(INFO) << "Select next buffer " << current_buffer_;
           int buffer_id = current_buffer_ / 4;
           int thread_id = current_buffer_ % 4;
           //request_ is the address of selected buffer
           request_ = (MatrixRequest *)task_handler_->get_buffer_request(buffer_id, thread_id);
-          LOG(INFO) << "IO reader: Current buffer is " << current_buffer_<< " Select next buffer "<< buffer_id << " of thread " << thread_id << ", start reading new task...";
+          //LOG(INFO) << "IO reader: Current buffer is " << current_buffer_<< " Select next buffer "<< buffer_id << " of thread " << thread_id << ", start reading new task...";
           StartRead((MatrixRequest *)request_);
         } 
       }
@@ -194,7 +194,7 @@ void RunServer(const std::string& task_type, uint32_t task_size, const std::stri
   ServerBuilder builder;
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
-  builder.SetMaxReceiveMessageSize(256 * 1024 * 1024);  // 64 MB, default is 4MB for incoming messages
+  builder.SetMaxReceiveMessageSize(512 * 1024 * 1024);  // 64 MB, default is 4MB for incoming messages
   std::unique_ptr<Server> server(builder.BuildAndStart());
   std::cout << "Server listening on " << server_address << std::endl;
 
