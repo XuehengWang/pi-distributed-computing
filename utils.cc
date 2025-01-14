@@ -6,7 +6,7 @@ namespace utils{
 matrix_t::matrix_t(size_t size) : n(size) {
     data = new double[n*n];
     for (size_t i = 0; i < n*n; ++i) {
-        data[i] = 2;
+        data[i] = 1;
         // for (size_t j = 0; j < n; ++j) {
         //     data[i][j] = 2;  // init to 1s
         // }
