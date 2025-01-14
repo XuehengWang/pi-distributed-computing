@@ -78,7 +78,6 @@ class DistMultClient {
         
       void OnReadDone(bool ok) override {
         // LOG(INFO) << "Current thread ID: " << std::this_thread::get_id();
-        LOG(INFO) << "111";
         if (ok) {
           // task_id = 1, rpi_id, n, result
           int rpi_id;
@@ -90,43 +89,34 @@ class DistMultClient {
             // std::unique_lock<std::mutex> lock(mu_);
             
             task_id = response_.task_id();
-            LOG(INFO) << "222, task_id is " << task_id;
             n = response_.n();
             auto it = on_fly_tasks.find(task_id);
-            LOG(INFO) << "333";
             //LOG(INFO) << (it==on_fly_tasks.end());
             task = it->second;
-            LOG(INFO) << "444";
             rpi_id = task->assigned_rpi;
-            LOG(INFO) << "555";
             on_fly_tasks.erase(task_id);
           }
          
           LOG(INFO) << "[ Client RPI " << rpi_id << " ] Received response for task_id: " << task_id
           << " with n: " << n << std::endl;
-          LOG(INFO) << "666";
           //first push rpi_id to update resource
           {
             std::unique_lock<std::mutex> lock(result_lock_);
             result_queue_.push(rpi_id);
           }
           result_cv_.notify_one();
-          LOG(INFO) << "777";
 
           // save output & send back task_id afterward
           //convertRepeatedToPtr(response_, task->result);
-          LOG(INFO) << "888";
           matrix_t *mat = new matrix_t(response_);       
-          task->result = Submatrix(0, 0, n, n);  
-          LOG(INFO) << "999";       
+          task->result = Submatrix(0, 0, n, n);       
           task->result_matrix = mat;
 
           {
             std::unique_lock<std::mutex> lock(result_lock_);
             result_queue_.push(task_id);
           }
-          result_cv_.notify_one();
-          LOG(INFO) << "000";       
+          result_cv_.notify_one();    
           // on_fly_tasks.erase(task_id); 
           // LOG(INFO) << "ggg";
           StartRead(&response_);
