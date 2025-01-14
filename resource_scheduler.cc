@@ -16,7 +16,7 @@ ResourceScheduler::~ResourceScheduler() {
 //for first time joining the list, resource_count is initialized to 8
 //insert to head
 void ResourceScheduler::add_entry_head(int32_t rpi_id) {
-    auto* new_entry = new resource_t(7, rpi_id);
+    auto* new_entry = new resource_t(3, rpi_id);
     std::lock_guard<std::mutex> lock(list_lock_);
 
     if (!head) {

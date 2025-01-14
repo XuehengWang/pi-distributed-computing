@@ -75,7 +75,7 @@ void matrix_t::print_matrix() const {
 
 int create_tasks(const size_t matrix_size, const size_t submatrix_size, std::vector<task_node_t*>& tasks_final, std::vector<task_node_t*>& tasks_init, matrix_t *mat) {
 
-    int sub_trees = (matrix_size / submatrix_size) * (matrix_size / submatrix_size);
+    int sub_trees = (matrix_size / submatrix_size) * (matrix_size / submatrix_size)/2;
 
     // for each subtree (submatrix multiplication)   
     for (size_t i = 0; i < sub_trees; ++i) {
