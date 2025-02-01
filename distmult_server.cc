@@ -1,234 +1,115 @@
-#include <chrono>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <sys/select.h>
 #include <iostream>
-#include <memory>
-#include <string>
 #include <thread>
-#include <queue>
 #include <mutex>
 #include <condition_variable>
+#include <queue>
+#include <unordered_map>
 #include <vector>
-#include <functional>
-//#include <cstdlib>   // std::atoi
+#include <fcntl.h>
+#include <sys/file.h>
 
 #include "absl/flags/parse.h"
 #include "absl/log/globals.h"
 #include "absl/log/initialize.h"
 #include "absl/log/log.h"
 
-#include <grpc/grpc.h>
-#include <grpcpp/security/server_credentials.h>
-#include <grpcpp/server.h>
-#include <grpcpp/server_builder.h>
-#include <grpcpp/server_context.h>
+#include "utils.h"
+#include "resource_scheduler.h"
 
-#include "distmult_service.pb.h"
-#include "distmult_service.grpc.pb.h"
+//using distmult::DistMultService;
+using utils::MatrixRequest;
+using utils::MatrixResponse;
 
-//#include "function_map.h"
-#include "task_handler.h"
-#include "matrix_handler.h"
+using utils::matrix_t;
+using utils::task_node_t;
+using utils::FunctionID;
+using utils::random_int;
+using rpiresource::ResourceScheduler;
+using utils::Submatrix;
 
-using grpc::CallbackServerContext;
-using grpc::Server;
-using grpc::ServerBuilder;
-// using grpc::ServerContext;
-// using grpc::ServerReaderWriter;
-// using grpc::ServerWriter;
-using grpc::Status;
-using grpc::CallbackServerContext;
-using grpc::ServerBidiReactor;
-using distmult::DistMultService;
-using distmult::MatrixRequest;
-using distmult::MatrixResponse;
-using std::chrono::system_clock;
+#define PORT 8080
+#define MAX_CLIENTS 10
+#define BUFFER_SIZE 1024
 
-using matrixclass::MatrixClass;
-
-
-class DistMultImpl final : public DistMultService::CallbackService {
-public:
-    explicit DistMultImpl(TaskHandler* handler) : task_handler_(handler) {}
-
-    ~DistMultImpl() {
-      
-    }
-    
-    grpc::ServerBidiReactor<MatrixRequest, MatrixResponse>* ComputeMatrix(
-      CallbackServerContext* context) override {
-    class ComputeRPC : public grpc::ServerBidiReactor<MatrixRequest, MatrixResponse> {
-    public:
-    ComputeRPC(TaskHandler* handler, std::mutex* mu)
-          : mu_(mu), task_handler_(handler), current_buffer_(-1){
-        
-        handler->initialize_buffers();
-        // start with read
-        writer_thread_ = std::thread(&ComputeRPC::writer, this);
-        NextRead();
-        
-    }
-    ~ComputeRPC() {
-      // stop_threads_ = true;
-      if (writer_thread_.joinable()) {
-        writer_thread_.join();
-      }
+class DistMultServer {
+ public:
+  DistMultServer(int port) {
+    server_sock_ = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_sock_ == -1) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
     }
 
-    /* 
-    server-side reader and writer threads
-    reader (OnReadDone) -> process received request, assign tasks to compute threads, notify compute threads
-    writer: get results from compute threads, prepare MatrixReponse, write it back
-    someone Mr.X: decide next compute thread
-    */
-      // call here after NextRead, current_buffer_ should not change
-      void OnReadDone(bool ok) override {
-        if (ok) {
-          //LOG(INFO) << "IO reader: Finish reading a task from RPC, current_buffer_ is " << current_buffer_;
-          int buffer_id = current_buffer_ / 4;
-          int thread_id = current_buffer_ % 4;
-          task_handler_->process_request(buffer_id, thread_id);
-          //LOG(INFO) << "IO reader: Already assigned task to thread " << thread_id << " buffer " << buffer_id;
-          //check write
-          //UPDATE: NextWrite();
-          NextRead();
-        } else {
-          Finish(Status::OK);
-        }
+    sockaddr_in server_addr{};
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(port);
+
+    if (bind(server_sock_, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Bind failed");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(server_sock_, MAX_CLIENTS) < 0) {
+        perror("Listen failed");
+        exit(EXIT_FAILURE);
+    }
+
+    LOG(INFO) << "Server listening on port " << port;
+  }
+
+  void Start() {
+    while (true) {
+      sockaddr_in client_addr;
+      socklen_t addr_len = sizeof(client_addr);
+      int client_sock = accept(server_sock_, (struct sockaddr*)&client_addr, &addr_len);
+      if (client_sock < 0) {
+          perror("Accept failed");
+          continue;
       }
-
-      void OnWriteDone(bool /*ok*/) override { NextWrite(); }
-
-      void OnDone() override {
-        LOG(INFO) << "RPC Completed";
-        delete this;
-      }
-
-      void OnCancel() override { LOG(ERROR) << "RPC Cancelled"; }
-
-      void writer() { 
-        //while (!stop_threads_) {
-          NextWrite();
-        //}
-      }
-
-    private:
-    //if no data to wrtie, start NextRead()
-      void NextWrite() {
-        int all_id = task_handler_->check_response();
-        //LOG(INFO) << "Server writer: Checking response...buffer id is " << all_id;
-        
-        if (all_id == -1) { //no more response to process
-          //NextRead();
-          //UPDATE: should not come back with all_id = -1, just wait
-           LOG(INFO) << "OHNO Server writer: check response returns -1";
-        } else {
-          int buffer_id = all_id / 4;
-          int thread_id = all_id % 4;
-          response_ = (MatrixResponse *)task_handler_->get_buffer_response(buffer_id, thread_id);
-          StartWrite(&*(MatrixResponse *)response_);
-          task_handler_->add_resource(thread_id);
-          //LOG(INFO) << "Server writer: Has wrritten result from thread " << thread_id;
-          //UPDATE
-          //NextWrite();
-        }
-      }
-        
-      void NextRead() {
-        current_buffer_ = task_handler_->select_next_buffer();
-        if (current_buffer_ == -1) {
-          std::cerr << "ERROR: No buffer available for receiving new request!" << std::endl;
-        } else {
-          //LOG(INFO) << "Select next buffer " << current_buffer_;
-          int buffer_id = current_buffer_ / 4;
-          int thread_id = current_buffer_ % 4;
-          //request_ is the address of selected buffer
-          request_ = (MatrixRequest *)task_handler_->get_buffer_request(buffer_id, thread_id);
-          //LOG(INFO) << "IO reader: Current buffer is " << current_buffer_<< " Select next buffer "<< buffer_id << " of thread " << thread_id << ", start reading new task...";
-          StartRead((MatrixRequest *)request_);
-        } 
-      }
-
-      int current_buffer_;
-      void* request_;
-      void* response_;
-
-      TaskHandler *task_handler_;
-      std::mutex *mu_;
-
-      std::thread writer_thread_;
-      std::atomic<bool> stop_threads_{false};
-      // absl::Mutex* mu_;
-      // std::vector<MatrixRequest>* received_requests_ ABSL_GUARDED_BY(mu_);
-    };
-    return new ComputeRPC(task_handler_, &mu_);
+      std::thread(&DistMultServer::HandleClient, this, client_sock).detach();
+    }
   }
 
  private:
-  TaskHandler* task_handler_; // generic TaskHandler
-
-  // absl::Mutex request_mu_;
-  std::mutex mu_;
-  // TODO: can use lock free queue in <boost/lockfree/queue.hpp>
-  std::queue<MatrixRequest> request_queue_;
-};
-
-void RunServer(const std::string& task_type, uint32_t task_size, const std::string& address) {
-  
-  std::string server_address(address);
-
-  // create task handler based on task_type, ex:matrix
-  // TaskHandler* handler = nullptr;
-  std::unique_ptr<TaskHandler> handler;
-
-
-  if (task_type == "matrix") {
-    //handler = new MatrixClass(task_size);
-    handler = std::make_unique<MatrixClass>(task_size);
-  } else {
-    std::cerr << "Unsupported task type: " << task_type << std::endl;
-    return;
+  void HandleClient(int client_sock) {
+    while (true) {
+      MatrixRequest request;
+      ssize_t bytes_received = recv(client_sock, &request, sizeof(MatrixRequest), 0);
+      if (bytes_received <= 0) {
+          close(client_sock);
+          return;
+      }
+      
+      MatrixResponse response = ProcessRequest(request);
+      send(client_sock, &response, sizeof(MatrixResponse), 0);
+    }
   }
 
-//   DistMultImpl service(handler);
-  DistMultImpl service(handler.get());
+  MatrixResponse ProcessRequest(const MatrixRequest& request) {
+    MatrixResponse response;
+    // Implement matrix computation logic here
+    LOG(INFO) << "Processing matrix request with task ID: " << request.task_id;
+    return response;
+  }
 
-  ServerBuilder builder;
-  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-  builder.RegisterService(&service);
-  builder.SetMaxReceiveMessageSize(512 * 1024 * 1024);  // 64 MB, default is 4MB for incoming messages
-  std::unique_ptr<Server> server(builder.BuildAndStart());
-  std::cout << "Server listening on " << server_address << std::endl;
-
-  server->Wait();
-
-}
-
+  int server_sock_;
+};
 
 int main(int argc, char** argv) {
   absl::ParseCommandLine(argc, argv);
   absl::SetStderrThreshold(absl::LogSeverityAtLeast::kInfo);
   absl::InitializeLog();
-  
-  if (argc < 4) {
-    std::cerr << "Usage: " << argv[0] << " <task_type> <n> <<address>>\n";
-    return EXIT_FAILURE;
-  }
 
-
-  std::string task_type = argv[1];
-  std::string address = argv[3];
-  int n = atoi(argv[2]);
-
-  if (task_type == "matrix") {
-    try {
-      RunServer(task_type, n, address);
-    } catch (const std::exception& e) {
-      std::cerr << "Error running server: " << e.what() << "\n";
-      return EXIT_FAILURE;
-    }
-  } else {
-    std::cerr << "Error: Unsupported task type \"" << task_type << "\". Supported: \"matrix\".\n";
-    return EXIT_FAILURE;
-  }
+  DistMultServer server(PORT);
+  server.Start();
 
   return EXIT_SUCCESS;
 }

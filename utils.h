@@ -8,15 +8,50 @@
 #include <cassert>
 #include <random>
 
-#include "distmult_service.pb.h"
-#include "distmult_service.grpc.pb.h"
 // #include "absl/flags/parse.h"
 // #include "absl/log/globals.h"
 // #include "absl/log/initialize.h"
 // #include "absl/log/log.h"
 
 namespace utils {
-  
+
+class MatrixRequest {
+public:
+    int task_id;
+    unsigned int ops;
+    unsigned int n;
+    std::vector<double> inputa;
+    std::vector<double> inputb;
+
+    // Default constructor
+    MatrixRequest() : task_id(0), ops(0), n(0) {}
+    
+    MatrixRequest(int task_id, unsigned int ops, unsigned int n,
+                  const std::vector<double>& inputa, const std::vector<double>& inputb)
+        : task_id(task_id), ops(ops), n(n), inputa(inputa), inputb(inputb) {}
+};
+
+class MatrixResponse {
+public:
+    int task_id;
+    unsigned int n;
+    std::vector<double> result;
+    
+    //Default constructor
+    MatrixResponse() : task_id(0), n(0) {}
+
+    MatrixResponse(int task_id, unsigned int n, const std::vector<double>& result)
+        : task_id(task_id), n(n), result(result) {}
+    
+    void print() const {
+        std::cout << "Task ID: " << task_id << "\nResult: ";
+        for (double val : result) {
+            std::cout << val << " ";
+        }
+        std::cout << "\n";
+    }
+};
+
 enum FunctionID { MULTIPLICATION, ADDITION };
 
 class Submatrix {
@@ -45,9 +80,9 @@ struct matrix_t {
     matrix_t(size_t size, double* raw_data);//constructor using 1D array
     ~matrix_t(); 
 
-    // Constructor that builds matrix from a MatrixResponse
-    matrix_t(const distmult::MatrixResponse& msg) {
-        const google::protobuf::RepeatedField<double>& result = msg.result();
+    // Constructor that builds matrix from a MatrixResponse - we need to change this 
+    matrix_t(const MatrixResponse& msg) {
+        std::vector<double> result = msg.result;
         size_t s = static_cast<size_t>(std::sqrt(result.size()));  // square matrix
 
         // Allocate memory for the matrix (2D array)

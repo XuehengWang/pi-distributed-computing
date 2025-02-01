@@ -32,43 +32,43 @@ find_package(absl CONFIG REQUIRED)
 
 
 # Proto file
-get_filename_component(mult_proto "./protos/distmult_service.proto" ABSOLUTE)
-get_filename_component(mult_proto_path "${mult_proto}" PATH)
+#get_filename_component(mult_proto "./protos/distmult_service.proto" ABSOLUTE)
+#get_filename_component(mult_proto_path "${mult_proto}" PATH)
 
 
-# blis 
+#blis 
 # find_package(BLIS CONFIG REQUIRED)
 
 # Generated sources in build, will move to src
-set(mult_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.pb.cc")
-set(mult_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.pb.h")
-set(mult_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.grpc.pb.cc")
-set(mult_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.grpc.pb.h")
-add_custom_command(
-      OUTPUT "${mult_proto_srcs}" "${mult_proto_hdrs}" "${mult_grpc_srcs}" "${mult_grpc_hdrs}"
-      COMMAND ${_PROTOBUF_PROTOC}
-      ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
-        --cpp_out "${CMAKE_CURRENT_BINARY_DIR}"
-        -I "${mult_proto_path}"
-        --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
-        "${mult_proto}"
-      DEPENDS "${mult_proto}")
+#set(mult_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.pb.cc")
+#set(mult_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.pb.h")
+#set(mult_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.grpc.pb.cc")
+#set(mult_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.grpc.pb.h")
+#add_custom_command(
+#      OUTPUT "${mult_proto_srcs}" "${mult_proto_hdrs}" "${mult_grpc_srcs}" "${mult_grpc_hdrs}"
+#      COMMAND ${_PROTOBUF_PROTOC}
+#      ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
+#        --cpp_out "${CMAKE_CURRENT_BINARY_DIR}"
+#        -I "${mult_proto_path}"
+#        --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
+#        "${mult_proto}"
+#      DEPENDS "${mult_proto}")
 
 # Include generated *.pb.h files
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 # include_directories("${CMAKE_CURRENT_BINARY_DIR}/src")
 
 # grpc_proto
-add_library(mult_grpc_proto
-  ${mult_grpc_srcs}
-  ${mult_grpc_hdrs}
-  ${mult_proto_srcs}
-  ${mult_proto_hdrs})
-target_link_libraries(mult_grpc_proto
-  absl::absl_log
-  ${_REFLECTION}
-  ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF})
+#add_library(mult_grpc_proto
+#  ${mult_grpc_srcs}
+#  ${mult_grpc_hdrs}
+#  ${mult_proto_srcs}
+#  ${mult_proto_hdrs})
+target_link_libraries(#ult_grpc_proto
+  absl::absl_log)
+#  ${_REFLECTION}
+#  ${_GRPC_GRPCPP}
+#  ${_PROTOBUF_LIBPROTOBUF})
 
 # function map 
 # add_library(distmult_function_map
@@ -84,11 +84,11 @@ target_link_libraries(mult_grpc_proto
 add_library(utils
   "utils.h"
   "utils.cc")
-target_link_libraries(utils
-  mult_grpc_proto
-  ${_REFLECTION}
-  ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF})
+target_link_libraries(utils)
+	#  mult_grpc_proto
+	#${_REFLECTION})
+  #  ${_GRPC_GRPCPP}
+  # ${_PROTOBUF_LIBPROTOBUF})
 
 # task_handler class
 add_library(task_handler
@@ -96,21 +96,21 @@ add_library(task_handler
   "matrix_handler.h"
   "matrix_handler.cc")
 target_link_libraries(task_handler
-  mult_grpc_proto
+	#  mult_grpc_proto
   utils
-  blis
-  ${_REFLECTION}
-  ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF})
+  blis)
+ # ${_REFLECTION})
+  #  ${_GRPC_GRPCPP}
+  #  ${_PROTOBUF_LIBPROTOBUF})
 
 # Primary node resource scheduler
 add_library(resource_scheduler STATIC resource_scheduler.cc resource_scheduler.h)
 target_link_libraries(resource_scheduler
-  mult_grpc_proto
-  utils
-  ${_REFLECTION}
-  ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF})
+	#  mult_grpc_proto
+  utils)
+  #${_REFLECTION})
+  #  ${_GRPC_GRPCPP}
+  #  ${_PROTOBUF_LIBPROTOBUF})
 
 # target_include_directories(resource_scheduler PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -120,7 +120,7 @@ foreach(_target
   add_executable(${_target}
     "${_target}.cc")
   target_link_libraries(${_target}
-    mult_grpc_proto
+	  #    mult_grpc_proto
     task_handler
     resource_scheduler
     utils
@@ -128,14 +128,14 @@ foreach(_target
     absl::flags_parse
     absl::absl_log
     absl::log_initialize
-    absl::log_globals
-    ${_REFLECTION}
-    ${_GRPC_GRPCPP}
-    ${_PROTOBUF_LIBPROTOBUF})
+    absl::log_globals)
+    # ${_REFLECTION})
+    #    ${_GRPC_GRPCPP}
+    #    ${_PROTOBUF_LIBPROTOBUF})
 endforeach()
 
-add_executable(test_resource_scheduler test_resource_scheduler.cc)
-target_link_libraries(test_resource_scheduler PRIVATE resource_scheduler)
+#add_executable(test_resource_scheduler test_resource_scheduler.cc)
+#target_link_libraries(test_resource_scheduler PRIVATE resource_scheduler)
 
-enable_testing()
-add_test(NAME test_resource_scheduler COMMAND test_resource_scheduler)
+#enable_testing()
+#add_test(NAME test_resource_scheduler COMMAND test_resource_scheduler)

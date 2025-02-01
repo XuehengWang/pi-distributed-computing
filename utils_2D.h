@@ -8,8 +8,6 @@
 #include <cassert>
 #include <random>
 
-#include "distmult_service.pb.h"
-#include "distmult_service.grpc.pb.h"
 // #include "absl/flags/parse.h"
 // #include "absl/log/globals.h"
 // #include "absl/log/initialize.h"
@@ -46,7 +44,7 @@ struct matrix_t {
 
     // Constructor that builds matrix from a MatrixResponse
     matrix_t(const distmult::MatrixResponse& msg) {
-        const google::protobuf::RepeatedField<double>& result = msg.result();
+//        const google::protobuf::RepeatedField<double>& result = msg.result();
         size_t s = static_cast<size_t>(std::sqrt(result.size()));  // Assuming square matrix
 
         // Allocate memory for the matrix (2D array)

@@ -1,10 +1,11 @@
 #ifndef MATRIX_HANDLER_H
 #define MATRIX_HANDLER_H
 
+#include "utils.h"
 #include "task_handler.h"
 
-using distmult::MatrixRequest;
-using distmult::MatrixResponse;
+using utils::MatrixRequest;
+using utils::MatrixResponse;
 
 namespace matrixclass {
 
@@ -18,6 +19,9 @@ struct task_compute_data_t {
     double *inputA;
     double *inputB;
     double *result;
+    //std::vector<double> *inputA;
+    //std::vector<double> *inputB;
+    //std::vector<double> *result;
 
     task_compute_data_t(int32_t task_id, uint32_t n, utils::FunctionID ops)
         : task_id(task_id), ops(ops), n(n), inputA(nullptr),inputB(nullptr), result(nullptr) {}
@@ -37,7 +41,6 @@ struct alignas(64) matrix_buffer_t {
     task_compute_data_t data;
     MatrixResponse response;
     //struct task_result_t result;
-
     matrix_buffer_t() 
         : request(), 
           data(-1, 0, utils::FunctionID::ADDITION),

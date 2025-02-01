@@ -12,8 +12,6 @@
 
 #include <blis/blis.h>
 
-#include "distmult_service.pb.h"
-#include "distmult_service.grpc.pb.h"
 #include "utils.h"
 
 
