@@ -13,6 +13,15 @@ option(protobuf_MODULE_COMPATIBLE TRUE)
 find_package(Protobuf CONFIG REQUIRED)
 message(STATUS "Using protobuf ${Protobuf_VERSION}")
 
+if(POLICY CMP0167)
+  cmake_policy(SET CMP0167 NEW)
+endif()
+
+find_package(Boost REQUIRED COMPONENTS system thread)
+message(STATUS "Using Boost ${Boost_VERSION}")
+find_package(OpenSSL REQUIRED)
+message(STATUS "Using OpenSSL ${OpenSSL_VERSION}")
+
 set(_PROTOBUF_LIBPROTOBUF protobuf::libprotobuf)
 set(_REFLECTION gRPC::grpc++_reflection)
 
@@ -30,45 +39,54 @@ set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
 # Find absl package (log)
 find_package(absl CONFIG REQUIRED)
 
-
 # Proto file
-#get_filename_component(mult_proto "./protos/distmult_service.proto" ABSOLUTE)
-#get_filename_component(mult_proto_path "${mult_proto}" PATH)
+get_filename_component(mult_proto "./protos/distmult_service.proto" ABSOLUTE)
+get_filename_component(mult_proto_path "${mult_proto}" PATH)
 
+#Boost installation
+#set(BOOST_ROOT "$ENV{HOME}/boost/boost_1_74_0")
+#set(Boost_INCLUDE_DIR  "$ENV{HOME}/boost/boost_1_74_0")
+#set(Boost_LIBRARY_DIR "$ENV{HOME}/boost/boost_1_74_0/libs")
+#find_package(Boost REQUIRED Components system) 
 
 #blis 
 # find_package(BLIS CONFIG REQUIRED)
 
 # Generated sources in build, will move to src
-#set(mult_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.pb.cc")
-#set(mult_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.pb.h")
+set(mult_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.pb.cc")
+set(mult_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.pb.h")
 #set(mult_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.grpc.pb.cc")
 #set(mult_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.grpc.pb.h")
-#add_custom_command(
-#      OUTPUT "${mult_proto_srcs}" "${mult_proto_hdrs}" "${mult_grpc_srcs}" "${mult_grpc_hdrs}"
-#      COMMAND ${_PROTOBUF_PROTOC}
-#      ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
-#        --cpp_out "${CMAKE_CURRENT_BINARY_DIR}"
-#        -I "${mult_proto_path}"
-#        --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
-#        "${mult_proto}"
-#      DEPENDS "${mult_proto}")
+add_custom_command(
+      OUTPUT "${mult_proto_srcs}" "${mult_proto_hdrs}"# "${mult_grpc_srcs}" "${mult_grpc_hdrs}"
+      COMMAND ${_PROTOBUF_PROTOC}
+      ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
+        --cpp_out "${CMAKE_CURRENT_BINARY_DIR}"
+        -I "${mult_proto_path}"
+        --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
+        "${mult_proto}"
+      DEPENDS "${mult_proto}")
 
 # Include generated *.pb.h files
+include_directories(${Boost_INCLUDE_DIRS})
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 # include_directories("${CMAKE_CURRENT_BINARY_DIR}/src")
 
 # grpc_proto
-#add_library(mult_grpc_proto
-#  ${mult_grpc_srcs}
+add_library(mult_grpc_proto
+	#  ${mult_grpc_srcs}
 #  ${mult_grpc_hdrs}
-#  ${mult_proto_srcs}
-#  ${mult_proto_hdrs})
-target_link_libraries(#ult_grpc_proto
-  absl::absl_log)
+  ${mult_proto_srcs}
+  ${mult_proto_hdrs})
+target_link_libraries(mult_grpc_proto
+  absl::absl_log
 #  ${_REFLECTION}
 #  ${_GRPC_GRPCPP}
-#  ${_PROTOBUF_LIBPROTOBUF})
+  ${_PROTOBUF_LIBPROTOBUF}
+  ${Boost_LIBRARIES}
+  OpenSSL::SSL
+  OpenSSL::Crypto
+  pthread)
 
 # function map 
 # add_library(distmult_function_map
@@ -84,11 +102,15 @@ target_link_libraries(#ult_grpc_proto
 add_library(utils
   "utils.h"
   "utils.cc")
-target_link_libraries(utils)
-	#  mult_grpc_proto
+target_link_libraries(utils
+  mult_grpc_proto
 	#${_REFLECTION})
   #  ${_GRPC_GRPCPP}
-  # ${_PROTOBUF_LIBPROTOBUF})
+  ${_PROTOBUF_LIBPROTOBUF}
+  ${Boost_LIBRARIES}
+  OpenSSL::SSL
+  OpenSSL::Crypto
+  pthread)
 
 # task_handler class
 add_library(task_handler
@@ -96,21 +118,29 @@ add_library(task_handler
   "matrix_handler.h"
   "matrix_handler.cc")
 target_link_libraries(task_handler
-	#  mult_grpc_proto
+  mult_grpc_proto
   utils
-  blis)
+  blis
  # ${_REFLECTION})
   #  ${_GRPC_GRPCPP}
-  #  ${_PROTOBUF_LIBPROTOBUF})
+  ${_PROTOBUF_LIBPROTOBUF}
+  ${Boost_LIBRARIES}
+  OpenSSL::SSL
+  OpenSSL::Crypto
+  pthread)
 
 # Primary node resource scheduler
 add_library(resource_scheduler STATIC resource_scheduler.cc resource_scheduler.h)
 target_link_libraries(resource_scheduler
-	#  mult_grpc_proto
-  utils)
+ mult_grpc_proto
+ utils
   #${_REFLECTION})
   #  ${_GRPC_GRPCPP}
-  #  ${_PROTOBUF_LIBPROTOBUF})
+  ${_PROTOBUF_LIBPROTOBUF}
+  ${Boost_LIBRARIES}
+  OpenSSL::SSL
+  OpenSSL::Crypto
+  pthread)
 
 # target_include_directories(resource_scheduler PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -120,7 +150,7 @@ foreach(_target
   add_executable(${_target}
     "${_target}.cc")
   target_link_libraries(${_target}
-	  #    mult_grpc_proto
+    mult_grpc_proto
     task_handler
     resource_scheduler
     utils
@@ -128,10 +158,14 @@ foreach(_target
     absl::flags_parse
     absl::absl_log
     absl::log_initialize
-    absl::log_globals)
+    absl::log_globals
     # ${_REFLECTION})
     #    ${_GRPC_GRPCPP}
-    #    ${_PROTOBUF_LIBPROTOBUF})
+  ${_PROTOBUF_LIBPROTOBUF}
+  ${Boost_LIBRARIES}
+  OpenSSL::SSL
+  OpenSSL::Crypto
+  pthread)
 endforeach()
 
 #add_executable(test_resource_scheduler test_resource_scheduler.cc)

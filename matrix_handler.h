@@ -1,11 +1,10 @@
 #ifndef MATRIX_HANDLER_H
 #define MATRIX_HANDLER_H
 
-#include "utils.h"
 #include "task_handler.h"
 
-using utils::MatrixRequest;
-using utils::MatrixResponse;
+using distmult::MatrixRequest;
+using distmult::MatrixResponse;
 
 namespace matrixclass {
 

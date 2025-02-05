@@ -8,13 +8,15 @@
 #include <cassert>
 #include <random>
 
+#include "distmult_service.pb.h"
+
 // #include "absl/flags/parse.h"
 // #include "absl/log/globals.h"
 // #include "absl/log/initialize.h"
 // #include "absl/log/log.h"
 
 namespace utils {
-
+/**
 class MatrixRequest {
 public:
     int task_id;
@@ -51,7 +53,7 @@ public:
         std::cout << "\n";
     }
 };
-
+**/
 enum FunctionID { MULTIPLICATION, ADDITION };
 
 class Submatrix {
@@ -81,8 +83,9 @@ struct matrix_t {
     ~matrix_t(); 
 
     // Constructor that builds matrix from a MatrixResponse - we need to change this 
-    matrix_t(const MatrixResponse& msg) {
-        std::vector<double> result = msg.result;
+    matrix_t(const distmult::MatrixResponse& msg) {
+	const google::protobuf::RepeatedField<double>& result = msg.result();
+        //std::vector<double> result = msg.result;
         size_t s = static_cast<size_t>(std::sqrt(result.size()));  // square matrix
 
         // Allocate memory for the matrix (2D array)

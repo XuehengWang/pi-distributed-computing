@@ -81,24 +81,22 @@ void MatrixClass::initialize_buffers() {
         /* Input */
         // task_id and ops can change, but input size n is fixed now
         buffer.data.n = n_;
-        /**this should be assigned memory that is reused here.**/
-	std::vector<double> inputa = request.inputa;
-        std::vector<double> inputb = request.inputb;
-        inputa.resize(n_*n_, 0.0f); //resize once
-        inputb.resize(n_*n_, 0.0f);
-        double* inputa_ptr = &inputa[0];
-        double* inputb_ptr = &inputb[0];
+        google::protobuf::RepeatedField<double>& inputa = *request.mutable_inputa();
+        google::protobuf::RepeatedField<double>& inputb = *request.mutable_inputb();
+        inputa.Resize(n_*n_, 0.0f); //resize once
+        inputb.Resize(n_*n_, 0.0f);
+        double* inputa_ptr = inputa.mutable_data();
+        double* inputb_ptr = inputb.mutable_data();
         buffer.data.inputA = inputa_ptr;
         buffer.data.inputB = inputb_ptr;
 
         /* Output */
         MatrixResponse& response = buffer.response;
-	std::vector<double> output = response.result;
-        output.resize(n_*n_, 0.0f);
+        google::protobuf::RepeatedField<double>& output = *response.mutable_result();
+        output.Resize(n_*n_, 0.0f);
     
-        double* output_ptr = &output[0];//.mutable_data();
-        buffer.data.result = output_ptr; //output_ptr;
-
+        double* output_ptr = output.mutable_data();
+        buffer.data.result = output_ptr;
     }
 }
 
@@ -109,12 +107,12 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
     // matrix_buffer_t &buffer = buffers_[buffer_id * 4 + thread_id];
     
     MatrixRequest &request = buffer.request;
-    if (request.task_id == -1) {
+    if (request.task_id() == -1) {
         std::cout << "RECEIVED -1" << std::endl;
         stop_threads();
     }
 
-    utils::FunctionID operation = static_cast<utils::FunctionID>(request.ops);
+    utils::FunctionID operation = static_cast<utils::FunctionID>(request.ops());
 
     if (operation == utils::FunctionID::ADDITION || operation == utils::FunctionID::MULTIPLICATION) {
 
@@ -126,7 +124,7 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
         // google::protobuf::RepeatedField<double>& inputa = *request.mutable_inputa();
         // assert(inputa.size() == (buffer.data.n)*(buffer.data.n));
 
-        buffer.data.task_id = request.task_id;
+        buffer.data.task_id = request.task_id();
         buffer.data.ops = operation;
 
 /*
@@ -168,7 +166,7 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
         // std::cout << "In processing data -> " << "1: " << int(buffer.data.result[0]) << std::endl;
         // std::cout << "2: " << *buffer.data.result << std::endl; 
     } else {
-        std::cerr << "What?? ops is " << request.ops << std::endl;
+        std::cerr << "What?? ops is " << request.ops() << std::endl;
     }
     {
         // put into queue of the assigned compute thread
@@ -209,11 +207,11 @@ int MatrixClass::check_response() {
     // std::cout << "Response result[0]: " << response->result(0) << ", Set task_id " << result->task_id << std::endl;
     // std::cout << "Response result[0]: " << response->result(0) << ", Set task_id " << buffer.data.task_id << std::endl;
 
-    //response->set_task_id(buffer.data.task_id);
-    response->task_id = buffer.data.task_id;
+    response->set_task_id(buffer.data.task_id);
+    //response->task_id = buffer.data.task_id;
     // result should be ready in the field result
-    //response->set_n(buffer.data.n);
-    response->n = buffer.data.n;
+    response->set_n(buffer.data.n);
+    //response->n = buffer.data.n;
 
     return all_id;
 }
