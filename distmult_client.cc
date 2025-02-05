@@ -57,7 +57,7 @@ public:
         }
         
         std::cout << "Connected to server at " << host << ":" << port << std::endl;
-        
+	queue_message();        
         listener_thread_ = std::thread(&DistMultClient::receive_responses, this);
     }
 
@@ -213,7 +213,7 @@ public:
       //initialize_matrix_results();
 
       // start threads
-      //LOG(INFO) << "ClusterManager: Start reader and writer threads";
+      LOG(INFO) << "ClusterManager: Start reader and writer threads";
       //writer_thread_ = std::thread(&ClusterManager::writer, this);
       //reader_thread_ = std::thread(&ClusterManager::reader, this);
 
@@ -257,7 +257,7 @@ private:
 		std::thread sock_thread([&, address]() {
 		LOG(INFO) << "Started Socket for this address " << address;
 		  
-		std::shared_ptr<DistMultClient> client = std::make_shared<DistMultClient>(/**io_context,**/ address, 8080, result_queue_, result_cv_, result_lock_, submatrix_size_);
+		std::shared_ptr<DistMultClient> client = std::make_shared<DistMultClient>(/**io_context,**/ address, 5001, result_queue_, result_cv_, result_lock_, submatrix_size_);
 		//client_map[i] = client; //what is this i?
 		LOG(INFO) << "Client Socket started for RPI_Id: " << i;
 		//client->ComputeMatrix(i);
