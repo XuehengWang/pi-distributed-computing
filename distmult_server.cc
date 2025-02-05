@@ -173,7 +173,7 @@ void RunServer(const std::string& task_type, uint32_t task_size, const std::stri
 	    return;
 	  }
 
-	DistMultServer server( 8080, handler.get()); //pass in the rest of the parameters here
+	DistMultServer server(5001, handler.get()); //pass in the rest of the parameters here
 
 }
 int main(int argc, char** argv) {

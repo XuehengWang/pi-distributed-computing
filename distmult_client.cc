@@ -202,20 +202,20 @@ public:
         matrix_size_ = task_size;
         submatrix_size_ = subtask_size;
         std::this_thread::sleep_for(std::chrono::seconds(num_rpi * 5));
-        //initialize_matrix_tasks(matrix_size_, submatrix_size_);
+        initialize_matrix_tasks(matrix_size_, submatrix_size_);
 
       } else {
         std::cerr << "Error: Unsupported task type \"" << task_type << "\". Supported: \"matrix\".\n";
       }
 
-      //initialize_secondary_resources();
+      initialize_secondary_resources();
 
-      //initialize_matrix_results();
+//      initialize_matrix_results();
 
       // start threads
       LOG(INFO) << "ClusterManager: Start reader and writer threads";
-      //writer_thread_ = std::thread(&ClusterManager::writer, this);
-      //reader_thread_ = std::thread(&ClusterManager::reader, this);
+      writer_thread_ = std::thread(&ClusterManager::writer, this);
+      reader_thread_ = std::thread(&ClusterManager::reader, this);
 
       auto now = std::chrono::high_resolution_clock::now();
       start_time = std::chrono::duration<double>(now.time_since_epoch()).count();
