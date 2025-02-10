@@ -37,8 +37,8 @@ using utils::task_node_t;
 class DistMultClient
 {
 public:
-  DistMultClient(const std::string &host, int port, std::queue<int> &result_queue, std::condition_variable &result_cv, std::mutex &result_lock, std::unordered_map<int, task_node_t *> &tasks, int submatrix_size)
-      : result_queue_(result_queue), result_cv_(result_cv), result_lock_(result_lock), on_fly_tasks(tasks), submatrix_size_(submatrix_size)
+  DistMultClient(const std::string &host, int port, std::queue<int> &result_queue, std::condition_variable &result_cv, std::mutex &result_lock, int submatrix_size)
+      : result_queue_(result_queue), result_cv_(result_cv), result_lock_(result_lock), submatrix_size_(submatrix_size)
   {
 
     socket_fd_ = socket(AF_INET, SOCK_STREAM, 0);
@@ -192,24 +192,42 @@ public:
           else
           {
             std::cout << "Received Task ID: " << response.task_id() << std::endl;
-            int task_id = response.task_id();
+            //int task_id = response.task_id();
+            int rpi_id;
+            int task_id;
+            int n;
             task_node_t *task;
             {
-              std::unique_lock<std::mutex> lock(task_lock_);
+              //std::unique_lock<std::mutex> lock(task_lock_);
+              task_id = response_.task_id();
+              n = response_.n();
               auto it = on_fly_tasks.find(task_id);
-              if (it != on_fly_tasks.end())
-              {
-                task = it->second;
-                on_fly_tasks.erase(it);
+              //if (it != on_fly_tasks.end())
+              //{
+              task = it->second;
+              rpi_id = task->assigned_rpi;
+              on_fly_tasks.erase(task_id); //(it);
               }
+              LOG(INFO) << "[ Client RPI " << rpi_id << " ] Received response for task_id: " << task_id
+              << " with n: " << n << std::endl;
+              {
+                std::unique_lock<std::mutex> lock(result_lock_);
+                result_queue_.push(task_id);
+              }
+              result_cv_.notify_one();
+              // save output & send back task_id afterward
+              //convertRepeatedToPtr(response_, task->result);
+              matrix_t *mat = new matrix_t(response_);       
+              task->result = Submatrix(0, 0, n, n);       
+              task->result_matrix = mat;
+
+              {
+                std::unique_lock<std::mutex> lock(result_lock_);
+                result_queue_.push(task_id);
+              }
+              result_cv_.notify_one();    
             }
 
-            {
-              std::unique_lock<std::mutex> lock(result_lock_);
-              result_queue_.push(task_id);
-            }
-            result_cv_.notify_one();
-          }
           break;
         }
         else if (ret == 0)
