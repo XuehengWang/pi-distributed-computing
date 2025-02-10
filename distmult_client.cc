@@ -1,9 +1,10 @@
-/**The ComputeMatrix function waits for messages in the buffer(?) to send to the given secondary node, or it recieves data from a waiting secondary node)**/
+/**The ComputeMatrix function waits for messages in the buffer(?) to send to the given secondary node, or it eecieves data from a waiting secondary node)**/
 #include <iostream>
 #include <queue>
 #include <unordered_map>
 #include <condition_variable>
 #include <mutex>
+#include <poll.h>
 #include <thread>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -35,8 +36,8 @@ using utils::Submatrix;
 
 class DistMultClient {
 public:
-    DistMultClient(const std::string &host, int port, std::queue<int>& result_queue, std::condition_variable& result_cv, std::mutex& result_lock, int submatrix_size)
-        : result_queue_(result_queue), result_cv_(result_cv), result_lock_(result_lock), submatrix_size_(submatrix_size) {
+    DistMultClient(const std::string &host, int port, std::queue<int>& result_queue, std::condition_variable& result_cv, std::mutex& result_lock/**, std::condition_variable& task_cv, std::mutex& task_lock**/, int submatrix_size)
+        : result_queue_(result_queue), result_cv_(result_cv), result_lock_(result_lock), submatrix_size_(submatrix_size)/**, task_cv_(task_cv), task_lock_(task_lock)**/{
         
         socket_fd_ = socket(AF_INET, SOCK_STREAM, 0);
         if (socket_fd_ == -1) {
@@ -55,16 +56,20 @@ public:
             perror("Connection failed");
             exit(EXIT_FAILURE);
         }
-        
-        std::cout << "Connected to server at " << host << ":" << port << std::endl;
-	queue_message();        
+	std::cout << "reach here " << std::endl;        
+	initialize_request();
+	std::cout << "reach here ?" << std::endl;        
         listener_thread_ = std::thread(&DistMultClient::receive_responses, this);
+	std::cout << "reach here ??" << std::endl;        
+	//send_next_message();
+	writer_thread_ = std::thread(&DistMultClient::send_next_message, this);
+	//writer_thread_.detach(); // Run independently
     }
 
     ~DistMultClient() {
         stop();
     }
-
+    
     void initialize_request() {
         google::protobuf::RepeatedField<double>& inputa = *request_.mutable_inputa();
         google::protobuf::RepeatedField<double>& inputb = *request_.mutable_inputb();
@@ -75,17 +80,11 @@ public:
     }
 
     void create_request(int task_id, FunctionID ops, int n, Submatrix subA, Submatrix subB, matrix_t *inputA, matrix_t *inputB) {
-        request_.set_task_id(task_id);
+	request_.set_task_id(task_id);
         request_.set_ops(ops);
         request_.set_n(n);
         inputA->get_submatrix_data(subA, inputa_ptr_, inputA->data);
         inputB->get_submatrix_data(subB, inputb_ptr_, inputB->data);
-    }
-
-    void queue_message() {
-        if (!message_queue_.empty()) {
-            send_next_message();
-        }
     }
 
     void add_task(task_node_t*& task) {
@@ -94,67 +93,116 @@ public:
             std::unique_lock<std::mutex> lock(task_lock_);
             on_fly_tasks[task_id] = task;
             task_queue_.push(task_id);
+	    LOG(INFO) << "task queue is of size " << task_queue_.size();
         }
         task_cv_.notify_one();
-        queue_message();
     }
-
-    void send_request() {
-        std::string serialized_request;
-        request_.SerializeToString(&serialized_request);
-        if (send(socket_fd_, serialized_request.c_str(), serialized_request.size(), 0) == -1) {
-            perror("Failed to send request");
-        }
-    }
-
+    
     void send_next_message() {
-        if (message_queue_.empty()) {
+	
+      while (true) {
+        int task_id;
+        task_node_t* task;
+
+        {
+            std::unique_lock<std::mutex> lock(task_lock_);
+            task_cv_.wait(lock, [this] { return !task_queue_.empty() || done_; });
+
+            if (done_) {
+                stop();
+                return;
+            }
+
+            task_id = task_queue_.front();
+            LOG(INFO) << "Task queue is " << task_queue_.size() << ", task id is " << task_id;
+            task_queue_.pop();
+        }
+
+        if (task_id == -1) {  // Stop signal
+            stop();
             return;
         }
 
-        MatrixRequest* request = message_queue_.front();
-        std::string serialized_request;
-        request->SerializeToString(&serialized_request);
+        auto it = on_fly_tasks.find(task_id);
+        if (it == on_fly_tasks.end()) {
+            LOG(ERROR) << "Task not found in on_fly_tasks for ID: " << task_id;
+            continue;
+        }
 
-        if (send(socket_fd_, serialized_request.c_str(), serialized_request.size(), 0) == -1) {
+        task = it->second;
+
+        create_request(task->task_id, task->ops, task->n, task->left, task->right, task->left_matrix, task->right_matrix);
+
+        LOG(INFO) << "[ Client RPI " << task->assigned_rpi << " ] Sending request " << request_.task_id()
+                  << " with ops " << task->ops << ", input A[0] = " << request_.inputa()[0];
+
+        std::string serialized_request;
+        request_.SerializeToString(&serialized_request);
+        uint32_t size = htonl(serialized_request.size());
+
+        std::string final_message;
+        final_message.append(reinterpret_cast<const char*>(&size), sizeof(size));  // Prefix with size
+        final_message.append(serialized_request);  // Append protobuf data
+
+        if (send(socket_fd_, final_message.data(), final_message.size(), 0) == -1) {
             perror("Failed to send message");
         }
 
-        message_queue_.pop();
+        std::this_thread::sleep_for(std::chrono::seconds(10)); // Delay for simulation (optional)
+     }
     }
 
     void receive_responses() {
         while (!done_) {
-            char buffer[4096];
-            int bytes_received = recv(socket_fd_, buffer, sizeof(buffer), 0);
-            if (bytes_received <= 0) {
-                if (!done_) perror("Failed to receive response");
-                return;
+            struct pollfd pfd;
+            pfd.fd = socket_fd_;
+            pfd.events = POLLIN;  // Wait for incoming data
+
+            while (socket_fd_ != -1){
+                int ret = poll(&pfd, 1, 5000);
+                if (ret > 0 && (pfd.revents & POLLIN)) {
+                    uint32_t size;
+                    recv(socket_fd_, &size, sizeof(size), MSG_WAITALL);
+                    size = ntohl(size);
+                    std::string buffer(size, 0);
+                    recv(socket_fd_, &buffer[0], size, MSG_WAITALL);
+		    MatrixResponse response;
+                    
+		    if (!response.ParseFromString(buffer)) {
+                        std::cerr << "Failed to parse protobuf message" << std::endl;
+                    } else {
+                        std::cout << "Received Task ID: " << response.task_id() << std::endl;
+                    	int task_id = response.task_id();
+		    	task_node_t* task;
+			    {
+				std::unique_lock<std::mutex> lock(task_lock_);
+				auto it = on_fly_tasks.find(task_id);
+				if (it != on_fly_tasks.end()) {
+				    task = it->second;
+				    on_fly_tasks.erase(it);
+				}
+			    }
+
+			    {
+				std::unique_lock<std::mutex> lock(result_lock_);
+				result_queue_.push(task_id);
+			    }
+			    result_cv_.notify_one();
+		    }
+                    break;
+                } else if (ret == 0) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                } else {
+                    //std::cerr << "poll() error" << std::endl;
+                    break;
+                }
+
             }
 
-            MatrixResponse response;
-            response.ParseFromArray(buffer, bytes_received);
-            int task_id = response.task_id();
-            
-            task_node_t* task;
-            {
-                std::unique_lock<std::mutex> lock(task_lock_);
-                auto it = on_fly_tasks.find(task_id);
-                if (it != on_fly_tasks.end()) {
-                    task = it->second;
-                    on_fly_tasks.erase(it);
-                }
-            }
-            
-            {
-                std::unique_lock<std::mutex> lock(result_lock_);
-                result_queue_.push(task_id);
-            }
-            result_cv_.notify_one();
-            
-            send_next_message();
-        }
+   	}
     }
+    
+
 
     void stop() {
         done_ = true;
@@ -162,7 +210,10 @@ public:
         if (listener_thread_.joinable()) {
             listener_thread_.join();
         }
-        std::cout << "Client stopped" << std::endl;
+
+        if (writer_thread_.joinable()) {
+             writer_thread_.join();
+        }
     }
 
 private:
@@ -183,9 +234,9 @@ private:
     std::condition_variable task_cv_;
     std::queue<int> task_queue_;
 
-    std::queue<MatrixRequest*> message_queue_;
     bool done_ = false;
     int submatrix_size_;
+    std::thread writer_thread_;
     std::thread listener_thread_;
 };
 
@@ -193,7 +244,6 @@ private:
 class ClusterManager {
 public:
     ClusterManager(std::string &task_type, int num_rpi, std::vector<std::string>& addresses, int task_size, int subtask_size, int random_id_start): num_rpi_(0) {
-      // LOG(INFO) << task_type;
       random_id_ = random_id_start;
       if (task_type == "matrix") {
 
@@ -253,21 +303,20 @@ private:
 
     	for (int i = 0; i < num_rpi_total; i++) {
 		const auto& address = addresses[i];
-	//	boost::asio::io_context io_context;
-		std::thread sock_thread([&, address]() {
+		std::thread sock_thread([&, address, i]() {
 		LOG(INFO) << "Started Socket for this address " << address;
 		  
-		std::shared_ptr<DistMultClient> client = std::make_shared<DistMultClient>(/**io_context,**/ address, 5001, result_queue_, result_cv_, result_lock_, submatrix_size_);
-		//client_map[i] = client; //what is this i?
+		std::shared_ptr<DistMultClient> client = std::make_shared<DistMultClient>(address, 5001, result_queue_, result_cv_, result_lock_, submatrix_size_);
+		client_map[i] = client; //what is this i?
 		LOG(INFO) << "Client Socket started for RPI_Id: " << i;
-		//client->ComputeMatrix(i);
-		//io_context.run();
+		
 		});
             	{
-                	std::lock_guard<std::mutex> lock(thread_mutex_);
+                
+			std::lock_guard<std::mutex> lock(thread_mutex_);
 			client_threads_.emplace_back(std::move(sock_thread));
             	}
-
+		
 		num_rpi_++;
  
 	}
@@ -275,12 +324,9 @@ private:
 
     void initialize_matrix_tasks(int matrix_size, int submatrix_size) {
       whole_matrix_ = new matrix_t(matrix_size); //initialize matrix data in 2D format
-      //whole_matrix_->print_matrix();
       create_tasks(matrix_size, submatrix_size, all_tasks_, initial_tasks_, whole_matrix_);
-      //LOG(INFO) << "Created " << all_tasks_.size() << " in total, " << "starting with " << initial_tasks_.size() << " multiplications...";
       std::cout << "Created " << all_tasks_.size() << " in total, " << "starting with " << initial_tasks_.size() << " multiplications..." << std::endl;
       remaining_tasks_ = (matrix_size/submatrix_size) *  (matrix_size/submatrix_size) / 2;//subtrees
-      //remaining_tasks_ = all_tasks_.size();
     }
 
     void initialize_secondary_resources(){
@@ -305,8 +351,9 @@ private:
             break;
           }
           select_task = initial_tasks_.front();
-          // LOG(INFO) << "selected task is " << select_task;
+          LOG(INFO) << "selected task is " << select_task;
           initial_tasks_.erase(initial_tasks_.begin()); // TODO: pop()
+	  LOG(INFO) << "remaining initial tasks is " << initial_tasks_.size();
         }
 
         // get resource (select secondary node)
@@ -314,7 +361,7 @@ private:
         auto it = client_map.find(select_rpi);
         if (it != client_map.end()) {
           std::shared_ptr<DistMultClient> client = it->second;
-          // LOG(INFO) << "Found RPC Client with rpi_id " << select_rpi;
+          LOG(INFO) << "Found RPC Client with rpi_id " << select_rpi;
 
           // task_id + assigned_rpi
           select_task->assigned_rpi = select_rpi;
@@ -331,7 +378,7 @@ private:
           on_fly_tasks[task_id] = select_task;
 
           // // prepare the request?
-          // LOG(INFO) << "Finish preparing the task " << task_id << " on Manager, sending to RPC Client...";
+          LOG(INFO) << "Finish preparing the task " << task_id << " on Manager, sending to RPC Client...";
           // // notify the secondary to work for task
           client->add_task(select_task); //task_node_t
         } else {
@@ -352,22 +399,19 @@ private:
           std::unique_lock<std::mutex> lock(result_lock_);
           while (result_queue_.empty()) {
             result_cv_.wait(lock, [this] { return !result_queue_.empty();});
-          }
+	  }
           result_to_process = result_queue_.front();
           //result_queue_.erase(result_queue_.begin()); //TODO: optimize pop
           result_queue_.pop();
         }
-
-        if (result_to_process <= num_rpi_) { //it's rpi_id, we will release resource
+	std::cout << "result: " << result_to_process << ", rpi: " << num_rpi_ << std::endl;
+        if (result_to_process <= num_rpi_) { //it's rpi_id, we will release resource - HERE IS THE ISSUUEEEEEE
           resource_scheduler.produce_resource(result_to_process);
           continue;
-        } else { //it's a task id, we will process real result
+        } else { //ita task id, we will process real result
           process_matrix_result(result_to_process);
 
-          // remaining_tasks_--;
-
-
-          //LOG(INFO) << "Cluster: remaining tasks becomes " << remaining_tasks_;
+          LOG(INFO) << "Cluster: remaining tasks becomes " << remaining_tasks_;
           std::cout << "Finish: " << result_to_process << std::endl;
 
           //all tasks are done
@@ -378,7 +422,8 @@ private:
               stop_ = true;
             }
             task_cv_.notify_one();
-            clean_up();
+            
+	    clean_up();
           }
         }
       }
@@ -391,18 +436,12 @@ private:
       if (it != on_fly_tasks.end()) {
         task_node_t* task = it->second;
         LOG(INFO) << "Retrieved task with task_id " << task_id << ", processing result...";
-        //on_fly_tasks.erase(task_id);
-
-        // convert result to matrix_t
-        // matrix_t mat(matrix_t(submatrix_size_, task->result));
-
-        // matrix_t mat* = new matrix_t(submatrix_size_, task->result);
-        // std::shared_ptr<matrix_t> mat = std::make_shared<matrix_t>(submatrix_size_, task->result);
-
-        // position of the result matrix
+        
+	// position of the result matrix
         int subtree = task->subtree_id;
-       LOG(INFO) << "Received result of subtree " << subtree;
-        // get its parent
+        LOG(INFO) << "Received result of subtree " << subtree;
+        
+	// get its parent
         task_node_t *parent = task->parent;
         if (!parent) { //root of subtree
           LOG(INFO) << "Subtree " << subtree << " completed!!";
@@ -420,8 +459,6 @@ private:
 
         task_node_t *left_child_ptr = parent->left_child;
         task_node_t *right_child_ptr = parent->right_child;
-
-        //if (left_child_ptr == task.get()) {
 
         bool push = false;
         {
@@ -456,19 +493,23 @@ private:
             std::unique_lock<std::mutex> lock(task_lock_);
             //initial_tasks_.insert(initial_tasks_.begin(), parent);
             initial_tasks_.push_back(parent);
-            task_cv_.notify_one();
+            LOG(INFO) << "intial tasks queue now " << initial_tasks_.size(); 
+	    task_cv_.notify_one();
           }
         }
 
         //task->result_matrix->print_matrix();TODO
         all_tasks_.push_back(task); //TODO
+	LOG(INFO) << "all_tasks is now length " << all_tasks_.size();
         on_fly_tasks.erase(task_id);
+	LOG(INFO) << "on_fly_tasks is now: " << on_fly_tasks.size();
 
       } else {
         std::cout << "Cannot find task_id: " << task_id << std::endl;
         LOG(INFO) << "Cannot find task_id: " << task_id;
       }
     }
+
 
     void clean_up() {
       LOG(INFO) << "In clean-up...";

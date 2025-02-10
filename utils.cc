@@ -90,7 +90,7 @@ int create_tasks(const size_t matrix_size, const size_t submatrix_size, std::vec
             
             size_t col_start = j * submatrix_size;
             size_t row_start = size_t(i / (matrix_size / submatrix_size)) * submatrix_size;
-            //std::cout << "row_start: " << row_start << ", col_start: " << col_start << std::endl;
+            std::cout << "row_start: " << row_start << ", col_start: " << col_start << std::endl;
             tasks_count++;
             //auto new_task = std::make_shared<task_node_t>(MULTIPLICATION, submatrix_size);
             task_node_t* new_task = new task_node_t(MULTIPLICATION, submatrix_size, matrix_size);
@@ -148,7 +148,7 @@ int create_tasks(const size_t matrix_size, const size_t submatrix_size, std::vec
             base /= 2;
         }
        
-        //std::cout << dependency_counter << ", " << tasks_count << std::endl;
+        std::cout << dependency_counter << ", " << tasks_count << std::endl;
         assert((dependency_counter == tasks.size() - 1)); // power of 2
 
         // for (const auto& task : tasks) {
