@@ -181,12 +181,13 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
 
 int MatrixClass::check_response() {
     task_result_t *result;
-    // std::cout << "task pending is " << tasks_pending << std::endl;
+    std::cout << "task pending is " << tasks_pending << std::endl;
     int all_id;
     {
         std::unique_lock<std::mutex> output_lock(output_lock_);
         while (tasks_pending <= 0 && !stop_flag_) {
-            output_cv_.wait(output_lock, [this] { return tasks_pending > 0 || stop_flag_; }); 
+	   std::cout << "We are waiting" << std::endl; 
+	   output_cv_.wait(output_lock, [this] { return tasks_pending > 0 || stop_flag_; }); 
         }
         result = &(output_queue_.front());
         //all_id = result->buffer_id * 4 + result->thread_id;
@@ -260,38 +261,25 @@ void MatrixClass::initialize_threads() {
                 }
                 
                 matrix_buffer_t &working_buffer = buffers_[buffer_id];
-                // matrix_buffer_t &working_buffer = buffers_[buffer_id * 4 + tid];
-                //std::cout << "Thread " << tid << " is processing task (" << working_buffer.data.task_id
-                  //      << ") from buffer " << (int)buffer_id << std::endl;
-
                 // simple computation for test
-                //*(working_buffer.data.result) = *(working_buffer.data.input) + 1;
                 n = working_buffer.data.n;
                 if (working_buffer.data.ops == utils::FunctionID::ADDITION){
                     std::cout << "ADDITION" << std::endl;
                     for (int i = 0; i < n*n; i++) {
-                        //std::cout << working_buffer.data.result[i] << " = " << working_buffer.data.inputA[i] << " + " << working_buffer.data.inputB[i] << std::endl;
                         working_buffer.data.result[i] = working_buffer.data.inputA[i] + working_buffer.data.inputB[i];
                     }
                 } else {
 
-                    std::cout << "MULTIPLICATION" << std::endl;
-                    // bli_obj_create_with_attached_buffer(BLIS_DOUBLE, n, n, working_buffer.data.inputA, 1, n, &A_blis);
-                    // bli_obj_create_with_attached_buffer(BLIS_DOUBLE, n, n, working_buffer.data.inputB, 1, n, &B_blis);
-                    // bli_obj_create_with_attached_buffer(BLIS_DOUBLE, n, n, working_buffer.data.result, 1, n, &C_blis);
-                    
-                    //bli_gemm(&BLIS_ONE, &A_blis, &B_blis, &BLIS_ZERO, &C_blis);
-                    // for (int i = 0; i < n*n; i++) {
-                    //     //std::cout << working_buffer.data.result[i] << " = " << working_buffer.data.inputA[i] << " * " << working_buffer.data.inputB[i] << std::endl;
-                    //     working_buffer.data.result[i] = working_buffer.data.inputA[i] * working_buffer.data.inputB[i];
-                    // }
-                    bli_dgemm(BLIS_NO_TRANSPOSE, BLIS_NO_TRANSPOSE, n, n, n,
-                        &alpha, working_buffer.data.inputA, 1, n, working_buffer.data.inputB,
-                        1, n, &beta, working_buffer.data.result, 1, n);
+                    //std::cout << "MULTIPLICATION" << std::endl;
+                    //std::cout << "MULTIPLICATION" << std::endl;
+                    //bli_dgemm(BLIS_NO_TRANSPOSE, BLIS_NO_TRANSPOSE, n, n, n,
+                    //    &alpha, working_buffer.data.inputA, 1, n, working_buffer.data.inputB,
+                    //    1, n, &beta, working_buffer.data.result, 1, n);
+		    std::cout << "multiplicaiton done " << std::endl;
                 }
                 
                 //simulate heavy work
-                //std::this_thread::sleep_for(std::chrono::seconds(1));
+                std::this_thread::sleep_for(std::chrono::seconds(1));
                 //std::this_thread::sleep_for(std::chrono::microseconds(200));
 
                 //std::cout << "Thread " << tid << " results[0] = " << *(working_buffer.data.result) << std::endl;
