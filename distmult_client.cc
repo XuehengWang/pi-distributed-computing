@@ -107,7 +107,7 @@ public:
   void send_next_message()
   {
 
-    while (true)
+    while (!done_)
     {
       int task_id;
       task_node_t *task;
@@ -128,11 +128,11 @@ public:
         task_queue_.pop();
       }
 
-      if (task_id == -1)
-      { // Stop signal
-        stop();
-        return;
-      }
+      //if (task_id == -1)
+      //{ // Stop signal
+      //  stop();
+      //  return;
+      //}
 
       auto it = on_fly_tasks.find(task_id);
       if (it == on_fly_tasks.end())
@@ -150,8 +150,8 @@ public:
 
       std::string serialized_request;
       request_.SerializeToString(&serialized_request);
-      uint32_t size = htonl(serialized_request.size());
-
+      uint32_t size = htonl(serialized_request.size()); 
+      std::cout << "The size of the message is: " << size << std::endl;
       std::string final_message;
       final_message.append(reinterpret_cast<const char *>(&size), sizeof(size)); // Prefix with size
       final_message.append(serialized_request);                                  // Append protobuf data
@@ -161,7 +161,6 @@ public:
         perror("Failed to send message");
       }
 
-      std::this_thread::sleep_for(std::chrono::seconds(10)); // Delay for simulation (optional)
     }
   }
 
@@ -175,7 +174,7 @@ public:
 
       while (socket_fd_ != -1)
       {
-        int ret = poll(&pfd, 1, 5000);
+        int ret = poll(&pfd, 1, 500);
         if (ret > 0 && (pfd.revents & POLLIN))
         {
           uint32_t size;
@@ -183,15 +182,15 @@ public:
           size = ntohl(size);
           std::string buffer(size, 0);
           recv(socket_fd_, &buffer[0], size, MSG_WAITALL);
-          MatrixResponse response;
+          //MatrixResponse response;
 
-          if (!response.ParseFromString(buffer))
+          if (!response_.ParseFromString(buffer))
           {
             std::cerr << "Failed to parse protobuf message" << std::endl;
           }
           else
           {
-            std::cout << "Received Task ID: " << response.task_id() << std::endl;
+            std::cout << "Received Task ID: " << response_.task_id() << std::endl;
             //int task_id = response.task_id();
             int rpi_id;
             int task_id;
@@ -212,7 +211,7 @@ public:
               << " with n: " << n << std::endl;
               {
                 std::unique_lock<std::mutex> lock(result_lock_);
-                result_queue_.push(task_id);
+                result_queue_.push(rpi_id);
               }
               result_cv_.notify_one();
               // save output & send back task_id afterward
@@ -232,7 +231,7 @@ public:
         }
         else if (ret == 0)
         {
-          std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+          //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         }
         else
         {
@@ -245,6 +244,11 @@ public:
 
   void stop()
   {
+	  
+    //MatrixRequest request_finish;
+    request_.set_task_id(-1);
+    
+    //sned the message here StartWrite(&request_finish);
     done_ = true;
     close(socket_fd_);
     if (listener_thread_.joinable())
