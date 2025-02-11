@@ -271,7 +271,7 @@ private:
   std::condition_variable &result_cv_;
   std::queue<int> &result_queue_;
 
-  std::unordered_map<int, task_node_t *> &on_fly_tasks;
+  std::unordered_map<int, task_node_t *> on_fly_tasks;
   std::mutex task_lock_;
   std::condition_variable task_cv_;
   std::queue<int> task_queue_;

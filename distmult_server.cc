@@ -118,13 +118,13 @@ private:
 
             while (client_socket_ != -1)
             {
-                int ret = poll(&pfd, 1, 5000);
+                int ret = poll(&pfd, 1, 500);
                 if (ret > 0 && (pfd.revents & POLLIN))
                 {
                     uint32_t size;
                     recv(client_socket_, &size, sizeof(size), MSG_WAITALL);
                     size = ntohl(size);
-
+		    std::cout << "The size is: " << size << std::endl;
                     current_buffer_ = task_handler_->select_next_buffer();
                     int buffer_id = current_buffer_ / 4;
                     int thread_id = current_buffer_ % 4;
@@ -146,7 +146,7 @@ private:
                 else if (ret == 0)
                 {
                     std::cout << "No data received, sleeping..." << std::endl;
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                    //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
                 }
                 else
                 {
@@ -193,6 +193,7 @@ private:
                     {
                         perror("Failed to send response");
                     }
+           	    task_handler_->add_resource(thread_id);
                 }
             }
         }
