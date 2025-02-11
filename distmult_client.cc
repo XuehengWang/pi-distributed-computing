@@ -16,12 +16,7 @@
 #include "absl/log/initialize.h"
 #include "absl/log/log.h"
 
-#include <grpc/grpc.h>
-#include <grpcpp/alarm.h>
-#include <grpcpp/channel.h>
-#include <grpcpp/client_context.h>
-#include <grpcpp/create_channel.h>
-#include <grpcpp/security/credentials.h>
+#include"drpc++/drpc++.h"
 
 #include "distmult_service.pb.h"
 #include "distmult_service.grpc.pb.h"
@@ -30,9 +25,9 @@
 #include "utils.h"
 #include "resource_scheduler.h"
 
-using grpc::Channel;
-using grpc::ClientContext;
-using grpc::Status;
+using drpc::Channel;
+using drpc::ClientContext;
+using drpc::Status;
 using distmult::DistMultService;
 using distmult::MatrixRequest;
 using distmult::MatrixResponse;
@@ -50,14 +45,15 @@ class DistMultClient {
       : stub_(DistMultService::NewStub(channel)), result_queue_(result_queue), result_cv_(result_cv), result_lock_(result_lock), submatrix_size_(submatrix_size) {}
   
   void ComputeMatrix(int back_off_id) {
-    class ComputeRPC : public grpc::ClientBidiReactor<MatrixRequest, MatrixResponse> {
+    class ComputeRPC /**: some extension needs to go here I think**/ {
     public:
       explicit ComputeRPC(DistMultService::Stub* stub, std::queue<int>& result_queue, std::condition_variable& result_cv, std::mutex& result_lock, std::unordered_map<int, task_node_t*>& tasks
       , std::mutex& task_lock, std::condition_variable& task_cv, std::queue<int>& task_queue, int submatrix_size, int back_off_id)
           : result_queue_(result_queue), result_cv_(result_cv), result_lock_(result_lock), on_fly_tasks(tasks), task_queue_(task_queue), task_cv_(task_cv), 
           task_lock_(task_lock), submatrix_size_(submatrix_size){
         
-        stub->async()->ComputeMatrix(&context_, this);
+	//status =   
+        stub->/**async()->**/ComputeMatrix(&context_, this);
         StartCall();
         LOG(INFO) << "Client RPC: RPC Call initiated";
         
@@ -407,13 +403,12 @@ private:
         std::thread rpc_thread([this, address, i]() {
             LOG(INFO) << "Started RPC for address: " << address;
             // increase channel size
-            grpc::ChannelArguments channel_args;
+            drpc::ChannelArguments channel_args;
             channel_args.SetMaxReceiveMessageSize(256 * 1024 * 1024);  // 64 MB
 
-            std::shared_ptr<DistMultClient> client = std::make_shared<DistMultClient>(
-              grpc::CreateCustomChannel(address, grpc::InsecureChannelCredentials(), channel_args),
+            std::shared_ptr<DistMultClient> client = std::make_shared<DistMultClient>(drpc::CreateChannel(address, drpc::InsercureChannelCredentials()),
               result_queue_, result_cv_, result_lock_, submatrix_size_);
-
+	    //drpc::CreateChannel(address, drpc::InsercureChannelCredentials(), std::unique_ptr<DistMultService::Stub> stub = DistMultService::NewStub(channel);
             client_map[i] = client;
             LOG(INFO) << "Client RPC started for RPI_id: " << i;
             client->ComputeMatrix(i);
@@ -437,6 +432,8 @@ private:
     //   // result_queue_, result_cv_, result_lock_);
     //   std::shared_ptr<DistMultClient> client = new std::shared_ptr<DistMultClient>(grpc::CreateChannel(server_address, grpc::InsecureChannelCredentials()),
     //   result_queue_, result_cv_, result_lock_);
+
+
 
     //   //ComputeRPC* rpc_handle = client.ComputeMatrix();
      

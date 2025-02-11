@@ -15,11 +15,7 @@
 #include "absl/log/initialize.h"
 #include "absl/log/log.h"
 
-#include <grpc/grpc.h>
-#include <grpcpp/security/server_credentials.h>
-#include <grpcpp/server.h>
-#include <grpcpp/server_builder.h>
-#include <grpcpp/server_context.h>
+#include "drpc++/drpc++.h"
 
 #include "distmult_service.pb.h"
 #include "distmult_service.grpc.pb.h"
@@ -28,15 +24,15 @@
 #include "task_handler.h"
 #include "matrix_handler.h"
 
-using grpc::CallbackServerContext;
-using grpc::Server;
-using grpc::ServerBuilder;
+using drpc::ServerContext;
+using drpc::Server;
+using drpc::ServerBuilder;
 // using grpc::ServerContext;
-// using grpc::ServerReaderWriter;
-// using grpc::ServerWriter;
-using grpc::Status;
-using grpc::CallbackServerContext;
-using grpc::ServerBidiReactor;
+using drpc::ServerReaderWriter;
+using drpc::ServerWriter;
+using drpc::Status;
+//using grpc::ServerContext;
+//using grpc::ServerBidiReactor;
 using distmult::DistMultService;
 using distmult::MatrixRequest;
 using distmult::MatrixResponse;
@@ -45,7 +41,7 @@ using std::chrono::system_clock;
 using matrixclass::MatrixClass;
 
 
-class DistMultImpl final : public DistMultService::CallbackService {
+class DistMultImpl final : public DistMultService::Service {
 public:
     explicit DistMultImpl(TaskHandler* handler) : task_handler_(handler) {}
 
@@ -53,9 +49,9 @@ public:
       
     }
     
-    grpc::ServerBidiReactor<MatrixRequest, MatrixResponse>* ComputeMatrix(
-      CallbackServerContext* context) override {
-    class ComputeRPC : public grpc::ServerBidiReactor<MatrixRequest, MatrixResponse> {
+    drpc::ServerReaderWriter<MatrixRequest, MatrixResponse>* ComputeMatrix(
+      ServerContext* context) override {
+    class ComputeRPC : public drpc::ServeReaderWriter<MatrixRequest, MatrixResponse> {
     public:
     ComputeRPC(TaskHandler* handler, std::mutex* mu)
           : mu_(mu), task_handler_(handler), current_buffer_(-1){
@@ -192,7 +188,7 @@ void RunServer(const std::string& task_type, uint32_t task_size, const std::stri
   DistMultImpl service(handler.get());
 
   ServerBuilder builder;
-  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+  builder.AddListeningPort(server_address, drpc::InsecureServerCredentials());
   builder.RegisterService(&service);
   builder.SetMaxReceiveMessageSize(512 * 1024 * 1024);  // 64 MB, default is 4MB for incoming messages
   std::unique_ptr<Server> server(builder.BuildAndStart());
