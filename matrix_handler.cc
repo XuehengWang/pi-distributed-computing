@@ -219,13 +219,15 @@ int MatrixClass::check_response() {
 
 
 void MatrixClass::initialize_threads() {
-    for (uint32_t tid = 0; tid < 1; ++tid) {
+    for (uint32_t tid = 0; tid < 4; ++tid) {
         compute_threads_.emplace_back([this, tid]() {
-            //pin_thread_to_core(tid);
+        pin_thread_to_core(tid);
 
             bli_init();
-            bli_thread_set_num_threads(4);
-            bli_thread_set_ways(1, 1, 4, 1, 1);
+            //bli_thread_set_num_threads(4);
+            bli_thread_set_num_threads(1);         // Set number of BLIS threads to 3
+            //bli_thread_set_affinity_str("1:2:3");  // Pin BLIS threads to CPUs 1, 2, and 3
+	    bli_thread_set_ways(1, 1, 1, 1, 1);
             double alpha = 1.0, beta = 0.0;
             // change to bli_dgemm(), so we do not need obj_t
             obj_t A_blis, B_blis, C_blis;

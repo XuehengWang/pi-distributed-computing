@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <sys/select.h>
+#include <sys/epoll.h>
 #include <poll.h>
 #include <iostream>
 #include <thread>
@@ -15,7 +16,7 @@
 #include <vector>
 #include <fcntl.h>
 #include <sys/file.h>
-
+#include <csignal>
 #include "absl/flags/parse.h"
 #include "absl/log/globals.h"
 #include "absl/log/initialize.h"
@@ -30,6 +31,8 @@ using distmult::MatrixResponse;
 using std::chrono::system_clock;
 
 using matrixclass::MatrixClass;
+
+std::atomic<bool> running(true); // Flag to control the server loop
 
 class DistMultServer
 {
@@ -75,7 +78,10 @@ public:
             std::cout << "Start reader and writer threads" << std::endl;
             reader_thread_ = std::thread(&DistMultServer::start_reading, this);
             writer_thread_ = std::thread(&DistMultServer::writer_thread, this);
-        }
+        
+	    pin_thread_to_core(reader_thread_, 0);
+	    pin_thread_to_core(writer_thread_, 0);
+	}
     }
 
     ~DistMultServer()
@@ -92,7 +98,20 @@ private:
     TaskHandler *task_handler_;
     std::mutex task_lock_;
     int current_buffer_;
+    
+    void pin_thread_to_core(std::thread &thread, int core)
+    {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(core, &cpuset); // Pin to core 0
 
+        int rc = pthread_setaffinity_np(thread.native_handle(), sizeof(cpu_set_t), &cpuset);
+        if (rc != 0)
+        {
+            std::cerr << "Error setting thread affinity: " << strerror(rc) << std::endl;
+        }
+    }
+    
     int accept_client()
     {
         sockaddr_in client_addr;
@@ -110,71 +129,95 @@ private:
 
     void start_reading()
     {
-        while (client_socket_ != -1)
-        {
-            struct pollfd pfd;
-            pfd.fd = client_socket_;
-            pfd.events = POLLIN; // Wait for incoming data
+	while (!stop_writer_thread_){    
+	       struct pollfd pfd;
+	       pfd.fd = client_socket_;
+	       pfd.events = POLLIN; // Wait for incoming data
+		struct epoll_event event;
+		int epoll_fd = epoll_create1(0);
+		event.events = POLLIN;
+		event.data.fd = pfd.fd;
+		epoll_ctl(epoll_fd, EPOLL_CTL_ADD, pfd.fd, &event);
 
-            while (client_socket_ != -1)
-            {
-                int ret = poll(&pfd, 1, 500);
-                if (ret > 0 && (pfd.revents & POLLIN))
-                {
-                    uint32_t size;
-                    recv(client_socket_, &size, sizeof(size), MSG_WAITALL);
-                    size = ntohl(size);
-		    std::cout << "The size is: " << size << std::endl;
-                    current_buffer_ = task_handler_->select_next_buffer();
-                    int buffer_id = current_buffer_ / 4;
-                    int thread_id = current_buffer_ % 4;
-                    request_ = (MatrixRequest *)task_handler_->get_buffer_request(buffer_id, thread_id);
-                    std::string buffer(size, 0);
-                    recv(client_socket_, &buffer[0], size, MSG_WAITALL);
+		struct epoll_event events[1];
+	      while (client_socket_ != -1)
+	      {
+		int ret = epoll_wait(epoll_fd, events, 1, 100);//int ret = poll(&pfd, 1, 100);
+		if (pfd.revents & POLLHUP || pfd.revents & POLLERR || pfd.revents & POLLNVAL) {
+		    std::cerr << "Socket closed by the peer! Attempting to reconnect..." << std::endl;
+		    return;
+		} else if (ret > 0/** && (pfd.revents & POLLIN)**/)
+		{
+		    uint32_t size;
+		    ssize_t bytes_received = recv(client_socket_, &size, sizeof(size), MSG_WAITALL);
+		    if (bytes_received == 0) {
+		      current_buffer_ = task_handler_->select_next_buffer();
+                      int buffer_id = current_buffer_ / 4;
+                      int thread_id = current_buffer_ % 4;
+                      request_ = (MatrixRequest *)task_handler_->get_buffer_request(buffer_id, thread_id);
+                      request_->set_task_id(-1);
+ 	              task_handler_->process_request(buffer_id, thread_id);
 
-                    if (!request_->ParseFromString(buffer))
-                    {
-                        std::cerr << "Failed to parse protobuf message" << std::endl;
-                    }
-                    else
-                    {
-                        std::cout << "Received Task ID: " << request_->task_id() << std::endl;
-                        task_handler_->process_request(buffer_id, thread_id);
-                    }
-                    break;
-                }
-                else if (ret == 0)
-                {
-                    std::cout << "No data received, sleeping..." << std::endl;
-                    //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                }
-                else
-                {
-                    // std::cerr << "poll() error" << std::endl;
-                    break;
-                }
+		      stop_writer_thread_ = true;
+		      client_socket_ = -1;
+		      return;
+		    } else if (bytes_received == -1) {
+			perror("recv() failed");
+			return;
+		   }
+		    size = ntohl(size);
+		    
+		    if (size == sizeof(int)){
+			int32_t result = 0;
+			recv(client_socket_, &result, size, MSG_WAITALL);
+			if (result == -1){
+			  	//anything here
+				return; 
+			}
+		    
+		    }
+		    current_buffer_ = task_handler_->select_next_buffer();
+		    int buffer_id = current_buffer_ / 4;
+		    int thread_id = current_buffer_ % 4;
+		    request_ = (MatrixRequest *)task_handler_->get_buffer_request(buffer_id, thread_id);
+		    std::string buffer(size, 0);
+		    recv(client_socket_, &buffer[0], size, MSG_WAITALL);
 
-                // std::cout << "Client connected" << std::endl;
-            }
-        }
+		    if (!request_->ParseFromString(buffer))
+		    {
+			std::cerr << "Failed to parse protobuf message" << std::endl;
+			return;
+
+		    }
+		    else
+		    {
+			task_handler_->process_request(buffer_id, thread_id);
+		    }
+		    break;
+		}
+		else if (ret == 0)
+		{
+		}
+		else
+		{
+		    break;
+		}
+
+	      }
+	}
     }
 
     void writer_thread()
     {
-        std::cout << "Started writer Thread " << std::endl;
-        // std::cout << stop_writer_thread_ << std::endl;
-        stop_writer_thread_ = false;
         while (!stop_writer_thread_)
         {
-            int response_id = task_handler_->check_response();
-            std::cout << "The response id is: " << response_id << std::endl;
+	    int response_id = task_handler_->check_response();
             if (response_id == -1)
             {
                 LOG(INFO) << "OHNO Server writer: check response returns -1";
             }
             else
             {
-                //	    std::cout << "We are sending a message" << std::endl;
                 int buffer_id = response_id / 4;
                 int thread_id = response_id % 4;
                 response_ = (MatrixResponse *)task_handler_->get_buffer_response(buffer_id, thread_id);
@@ -182,7 +225,6 @@ private:
                 std::string serialized_response;
                 response_->SerializeToString(&serialized_response);
                 uint32_t size = htonl(serialized_response.size());
-                std::cout << "The size of the response is : " << size << std::endl;
                 std::string final_message;                                                 // can we combine so this just uses one string
                 final_message.append(reinterpret_cast<const char *>(&size), sizeof(size)); // Prefix with size
                 final_message.append(serialized_response);                                 // Append protobuf data
@@ -201,14 +243,7 @@ private:
 
     void stop()
     {
-        stop_writer_thread_ = true;
-        std::cerr << "Closing server socket at line " << __LINE__ << std::endl;
-        close(server_socket_);
-        if (client_socket_ != -1)
-        {
-            std::cerr << "Closing client socket at line " << __LINE__ << std::endl;
-            close(client_socket_);
-        }
+      
         if (reader_thread_.joinable())
         {
             reader_thread_.join();
@@ -217,7 +252,11 @@ private:
         {
             writer_thread_.join();
         }
-        std::cout << "Server stopped" << std::endl;
+        std::cerr << "Closing server socket at line " << __LINE__ << std::endl;
+        close(server_socket_);
+        std::cerr << "Closing client socket at line " << __LINE__ << std::endl;
+        close(client_socket_);
+	running = false;
     }
 
     MatrixRequest *request_;
@@ -228,12 +267,10 @@ void RunServer(const std::string &task_type, uint32_t task_size, const std::stri
 {
 
     std::string server_address(address);
-    // create task handler
     std::unique_ptr<TaskHandler> handler;
 
     if (task_type == "matrix")
     {
-        // handler = new MatrixClass(task_size);
         handler = std::make_unique<MatrixClass>(task_size);
     }
     else
@@ -244,11 +281,12 @@ void RunServer(const std::string &task_type, uint32_t task_size, const std::stri
 
     // Use unique_ptr to manage server lifetime
     auto server = std::make_unique<DistMultServer>(server_address, 5001, handler.get());
-
-    std::cout << "Server is running..." << std::endl;
-    while (true)
+   
+   
+    while (running)
     {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        
+	   std::this_thread::sleep_for(std::chrono::seconds(1));//here I think the issue is....
     }
 }
 int main(int argc, char **argv)
