@@ -17,8 +17,8 @@ if(POLICY CMP0167)
   cmake_policy(SET CMP0167 NEW)
 endif()
 
-find_package(Boost REQUIRED COMPONENTS system thread)
-message(STATUS "Using Boost ${Boost_VERSION}")
+#find_package(Boost REQUIRED COMPONENTS system thread)
+#message(STATUS "Using Boost ${Boost_VERSION}")
 find_package(OpenSSL REQUIRED)
 message(STATUS "Using OpenSSL ${OpenSSL_VERSION}")
 
@@ -68,7 +68,7 @@ add_custom_command(
       DEPENDS "${mult_proto}")
 
 # Include generated *.pb.h files
-include_directories(${Boost_INCLUDE_DIRS})
+#include_directories(${Boost_INCLUDE_DIRS})
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 # include_directories("${CMAKE_CURRENT_BINARY_DIR}/src")
 
@@ -83,7 +83,7 @@ target_link_libraries(mult_grpc_proto
 #  ${_REFLECTION}
 #  ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF}
-  ${Boost_LIBRARIES}
+  #  ${Boost_LIBRARIES}
   OpenSSL::SSL
   OpenSSL::Crypto
   pthread)
@@ -107,7 +107,7 @@ target_link_libraries(utils
 	#${_REFLECTION})
   #  ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF}
-  ${Boost_LIBRARIES}
+  # ${Boost_LIBRARIES}
   OpenSSL::SSL
   OpenSSL::Crypto
   pthread)
@@ -124,7 +124,7 @@ target_link_libraries(task_handler
  # ${_REFLECTION})
   #  ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF}
-  ${Boost_LIBRARIES}
+  # ${Boost_LIBRARIES}
   OpenSSL::SSL
   OpenSSL::Crypto
   pthread)
@@ -137,7 +137,7 @@ target_link_libraries(resource_scheduler
   #${_REFLECTION})
   #  ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF}
-  ${Boost_LIBRARIES}
+  # ${Boost_LIBRARIES}
   OpenSSL::SSL
   OpenSSL::Crypto
   pthread)
@@ -162,7 +162,7 @@ foreach(_target
     # ${_REFLECTION})
     #    ${_GRPC_GRPCPP}
   ${_PROTOBUF_LIBPROTOBUF}
-  ${Boost_LIBRARIES}
+  # ${Boost_LIBRARIES}
   OpenSSL::SSL
   OpenSSL::Crypto
   pthread)
