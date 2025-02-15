@@ -9,7 +9,7 @@ MatrixClass::MatrixClass(uint32_t n)
     
     // init resource count to 2
     // last buffer id = 1, so first time use buffer 0
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 1; ++i) {
         resources_[i] = 2;
         last_buffer_[i] = 1;
     }
@@ -26,8 +26,8 @@ int MatrixClass::select_next_buffer() {
     std::lock_guard<std::mutex> lock(resource_lock_);
     uint32_t max_resource = resources_[0];
     int max_thread_id = 0;
-    for (int i = 0; i < 4; ++i) {
-        //std::cout << "resource from thread " << i << " is " << resources_[i] << std::endl;
+    for (int i = 0; i < 1; ++i) {
+        std::cout << "resource from thread " << i << " is " << resources_[i] << std::endl;
         if (resources_[i] > max_resource) {
             max_resource = resources_[i];
             max_thread_id = i;
@@ -43,9 +43,9 @@ int MatrixClass::select_next_buffer() {
         resources_[max_thread_id] = resources_[max_thread_id] - 1;
         last_buffer_[max_thread_id] = last_buffer_[max_thread_id] + 1;
         uint32_t select_buffer = (last_buffer_[max_thread_id]) % 2;
-        //std::cout << "Select buffer " << select_buffer << " of compute thread " << max_thread_id << std::endl;
+        std::cout << "Select buffer " << select_buffer << " of compute thread " << max_thread_id << std::endl;
         
-        int all_id = select_buffer * 4 + max_thread_id;
+        int all_id = select_buffer /** * 4 **/ + max_thread_id;
         return all_id;
         //return &(buffers_[select_buffer * 4 + max_thread_id].request);
     }
@@ -54,11 +54,11 @@ int MatrixClass::select_next_buffer() {
 
 // MatrixRequest *get_buffer_request(int buffer_id, int thread_id) override{
 void* MatrixClass::get_buffer_request(int buffer_id, int thread_id) {
-    return static_cast<void*>(&buffers_[buffer_id * 4 + thread_id].request);
+    return static_cast<void*>(&buffers_[buffer_id /** * 4**/ + thread_id].request);
 }
 
 void* MatrixClass::get_buffer_response(int buffer_id, int thread_id) {
-    return static_cast<void*>(&buffers_[buffer_id * 4 + thread_id].response);
+    return static_cast<void*>(&buffers_[buffer_id /** * 4**/ + thread_id].response);
 }
 
 void MatrixClass::add_resource(int thread_id) {
@@ -67,13 +67,13 @@ void MatrixClass::add_resource(int thread_id) {
 }
 
 /* 
-Update: preallocate the Request and Response messages
+Update: preallocate the Request and eesponse messages
 We first directly get the pointer to data at the begining, 
 if the message size does not change later, we can avoid resizing
 or reallocating memory during sending/receiving messages
 */
 void MatrixClass::initialize_buffers() {
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 2; i++) {
         matrix_buffer_t &buffer = buffers_[i];
         MatrixRequest &request = buffer.request;
 
@@ -102,8 +102,8 @@ void MatrixClass::initialize_buffers() {
 
 void MatrixClass::process_request(int buffer_id, int thread_id) {
 
-    matrix_buffer_t &buffer = buffers_[buffer_id * 4 + thread_id];
-    buffer_id = buffer_id * 4 + thread_id;
+    matrix_buffer_t &buffer = buffers_[buffer_id/** * 4**/ + thread_id];
+    buffer_id = buffer_id /*** 4 **/ + thread_id;
     // matrix_buffer_t &buffer = buffers_[buffer_id * 4 + thread_id];
     
     MatrixRequest &request = buffer.request;
@@ -162,9 +162,9 @@ void MatrixClass::process_request(int buffer_id, int thread_id) {
 */
         
         // all work
-        // std::cout << "buffer.data.result: " << buffer.data.result << std::endl;
-        // std::cout << "In processing data -> " << "1: " << int(buffer.data.result[0]) << std::endl;
-        // std::cout << "2: " << *buffer.data.result << std::endl; 
+        //std::cout << "buffer.data.result: " << buffer.data.result << std::endl;
+        //std::cout << "In processing data -> " << "1: " << int(buffer.data.result[0]) << std::endl;
+        //std::cout << "2: " << *buffer.data.result << std::endl; 
     } else {
         std::cerr << "What?? ops is " << request.ops() << std::endl;
     }
@@ -190,8 +190,8 @@ int MatrixClass::check_response() {
 	   output_cv_.wait(output_lock, [this] { return tasks_pending > 0 || stop_flag_; }); 
         }
         result = &(output_queue_.front());
-        //all_id = result->buffer_id * 4 + result->thread_id;
-        all_id = result->buffer_id;
+        all_id = result->buffer_id/** * 4**/ + result->thread_id;
+        //all_id = result->buffer_id; //I WONDER IF THE ERROR STEMS FROM HERE???
         output_queue_.pop();
         tasks_pending--;
     }
@@ -199,14 +199,14 @@ int MatrixClass::check_response() {
 
     // int all_id = result->buffer_id * 4 + result->thread_id;
              
-    //std::cout << "Check response... buffer_id = " << result->buffer_id << "(" <<result->task_id<< "), thread_id = " << result->thread_id << ", all id is " << all_id << std::endl;
+    std::cout << "Check response... buffer_id = " << result->buffer_id << "(" <<result->task_id<< "), thread_id = " << result->thread_id << ", all id is " << all_id << std::endl;
         
     matrix_buffer_t &buffer = buffers_[all_id];
     MatrixResponse *response = &(buffer.response);
 
     // AHA! Catch here!
-    // std::cout << "Response result[0]: " << response->result(0) << ", Set task_id " << result->task_id << std::endl;
-    // std::cout << "Response result[0]: " << response->result(0) << ", Set task_id " << buffer.data.task_id << std::endl;
+    std::cout << "Response result[0]: " << response->result(0) << ", Set task_id " << result->task_id << std::endl;
+    std::cout << "Response result[0]: " << response->result(0) << ", Set task_id " << buffer.data.task_id << std::endl;
 
     response->set_task_id(buffer.data.task_id);
     //response->task_id = buffer.data.task_id;
@@ -219,10 +219,9 @@ int MatrixClass::check_response() {
 
 
 void MatrixClass::initialize_threads() {
-    for (uint32_t tid = 0; tid < 4; ++tid) {
+    for (uint32_t tid = 0; tid < 1; ++tid) {
         compute_threads_.emplace_back([this, tid]() {
-        pin_thread_to_core(tid);
-
+        pin_thread_to_core(tid + 1);
             bli_init();
             //bli_thread_set_num_threads(4);
             bli_thread_set_num_threads(1);         // Set number of BLIS threads to 3
@@ -239,7 +238,7 @@ void MatrixClass::initialize_threads() {
             long long start_time, end_time;
             // thread loop
             while (!stop_flag_) {
-                // std::cout << "stop flag of " << tid << " is " << stop_flag_ << std::endl;
+                std::cout << "stop flag of " << tid << " is " << stop_flag_ << std::endl;
                 uint32_t buffer_id;
                 {
                     std::unique_lock<std::mutex> lock(input_locks_[tid]);
@@ -253,7 +252,7 @@ void MatrixClass::initialize_threads() {
                     // get a task by buffer id
                     buffer_id = input_queue_[tid].front();
                     input_queue_[tid].pop();
-                    // std::cout << "Thread [" << tid << "]: gets a task from buffer " << buffer_id << std::endl;
+                    std::cout << "Thread [" << tid << "]: gets a task from buffer " << buffer_id << std::endl;
                 }
                 if (count == 0) {
                     // first_compute = false;
@@ -266,7 +265,7 @@ void MatrixClass::initialize_threads() {
                 // simple computation for test
                 n = working_buffer.data.n;
                 if (working_buffer.data.ops == utils::FunctionID::ADDITION){
-                    std::cout << "ADDITION" << std::endl;
+                    //std::cout << "ADDITION" << std::endl;
                     for (int i = 0; i < n*n; i++) {
                         working_buffer.data.result[i] = working_buffer.data.inputA[i] + working_buffer.data.inputB[i];
                     }
@@ -274,17 +273,17 @@ void MatrixClass::initialize_threads() {
 
                     //std::cout << "MULTIPLICATION" << std::endl;
                     //std::cout << "MULTIPLICATION" << std::endl;
-                    //bli_dgemm(BLIS_NO_TRANSPOSE, BLIS_NO_TRANSPOSE, n, n, n,
-                    //    &alpha, working_buffer.data.inputA, 1, n, working_buffer.data.inputB,
-                    //    1, n, &beta, working_buffer.data.result, 1, n);
-		    std::cout << "multiplicaiton done " << std::endl;
+                    bli_dgemm(BLIS_NO_TRANSPOSE, BLIS_NO_TRANSPOSE, n, n, n,
+                        &alpha, working_buffer.data.inputA, 1, n, working_buffer.data.inputB,
+                        1, n, &beta, working_buffer.data.result, 1, n);
+		    //std::cout << "multiplicaiton done " << std::endl;
                 }
                 
                 //simulate heavy work
-                std::this_thread::sleep_for(std::chrono::seconds(1));
+                //std::this_thread::sleep_for(std::chrono::seconds(1));
                 //std::this_thread::sleep_for(std::chrono::microseconds(200));
 
-                //std::cout << "Thread " << tid << " results[0] = " << *(working_buffer.data.result) << std::endl;
+                std::cout << "Thread " << tid << " results[0] = " << *(working_buffer.data.result) << std::endl;
                 // put the result into output queue
                 // task_result_t result(tid, buffer_id, working_buffer.data.task_id);
                 int task_id;
@@ -293,7 +292,7 @@ void MatrixClass::initialize_threads() {
                     task_id = working_buffer.data.task_id;
                     output_queue_.push(std::move(task_result_t(tid, buffer_id, task_id)));
                     tasks_pending++;
-                    //std::cout << "Thread " << tid << " pushing" << std::endl;
+                    std::cout << "Thread " << tid << " pushing" << std::endl;
    
                 }
 		        auto now = std::chrono::high_resolution_clock::now();
@@ -301,7 +300,7 @@ void MatrixClass::initialize_threads() {
 
                 output_cv_.notify_one(); //TODO: move out?
                 count++; 		
- 		//std::cout << "Thread " << tid << " pushed task "<< working_buffer.data.task_id << " : " << task_id << ", tasks_pending increased to " << tasks_pending << std::endl;
+ 		std::cout << "Thread " << tid << " pushed task "<< working_buffer.data.task_id << " : " << task_id << ", tasks_pending increased to " << tasks_pending << std::endl;
             }
             //bli_finalize();
             long long duration_us = end_time - start_time;
@@ -324,7 +323,7 @@ void MatrixClass::initialize_threads() {
 void MatrixClass::stop_threads() {
     stop_flag_ = true;
     std::cout << "In stopping threads... " << stop_flag_ << std::endl;
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 1; i++) {
         input_cv_[i].notify_all();
     }
     for (auto& thread : compute_threads_) {

@@ -152,9 +152,11 @@ private:
 		    ssize_t bytes_received = recv(client_socket_, &size, sizeof(size), MSG_WAITALL);
 		    if (bytes_received == 0) {
 		      current_buffer_ = task_handler_->select_next_buffer();
-                      int buffer_id = current_buffer_ / 4;
-                      int thread_id = current_buffer_ % 4;
-                      request_ = (MatrixRequest *)task_handler_->get_buffer_request(buffer_id, thread_id);
+                      int buffer_id = current_buffer_;// / 4;
+                      int thread_id = 0;//current_buffer_;// % 4;
+                      
+		      std::cout << "buffer_id: " << buffer_id << " thread_id: " << thread_id << std::endl; 
+		      request_ = (MatrixRequest *)task_handler_->get_buffer_request(buffer_id, thread_id);
                       request_->set_task_id(-1);
  	              task_handler_->process_request(buffer_id, thread_id);
 
@@ -177,8 +179,9 @@ private:
 		    
 		    }
 		    current_buffer_ = task_handler_->select_next_buffer();
-		    int buffer_id = current_buffer_ / 4;
-		    int thread_id = current_buffer_ % 4;
+		    int buffer_id = current_buffer_;// / 4;
+		    int thread_id = 0;//current_buffer_;// % 4;
+		    std::cout << "current buffer is: " << current_buffer_ << std::endl; 
 		    request_ = (MatrixRequest *)task_handler_->get_buffer_request(buffer_id, thread_id);
 		    std::string buffer(size, 0);
 		    recv(client_socket_, &buffer[0], size, MSG_WAITALL);
@@ -191,6 +194,7 @@ private:
 		    }
 		    else
 		    {
+			std::cout << "task_id is: " << request_->task_id() << std::endl;
 			task_handler_->process_request(buffer_id, thread_id);
 		    }
 		    break;
@@ -218,9 +222,10 @@ private:
             }
             else
             {
-                int buffer_id = response_id / 4;
-                int thread_id = response_id % 4;
-                response_ = (MatrixResponse *)task_handler_->get_buffer_response(buffer_id, thread_id);
+                int buffer_id = response_id;// / 4;
+                int thread_id = 0;// response_id % 4;
+		std::cout << "buffer_id: " << buffer_id << " thread_id: " << thread_id << std::endl; 
+		response_ = (MatrixResponse *)task_handler_->get_buffer_response(buffer_id, thread_id);
 
                 std::string serialized_response;
                 response_->SerializeToString(&serialized_response);
