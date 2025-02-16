@@ -39,15 +39,14 @@ set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
 # Find absl package (log)
 find_package(absl CONFIG REQUIRED)
 
+# Find DPDK
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(DPDK REQUIRED libdpdk)
+message(STATUS "Using DPDK ${DPDK_VERSION}")
+
 # Proto file
 get_filename_component(mult_proto "./protos/distmult_service.proto" ABSOLUTE)
 get_filename_component(mult_proto_path "${mult_proto}" PATH)
-
-#Boost installation
-#set(BOOST_ROOT "$ENV{HOME}/boost/boost_1_74_0")
-#set(Boost_INCLUDE_DIR  "$ENV{HOME}/boost/boost_1_74_0")
-#set(Boost_LIBRARY_DIR "$ENV{HOME}/boost/boost_1_74_0/libs")
-#find_package(Boost REQUIRED Components system) 
 
 #blis 
 # find_package(BLIS CONFIG REQUIRED)
@@ -68,9 +67,8 @@ add_custom_command(
       DEPENDS "${mult_proto}")
 
 # Include generated *.pb.h files
-#include_directories(${Boost_INCLUDE_DIRS})
-include_directories("${CMAKE_CURRENT_BINARY_DIR}")
-# include_directories("${CMAKE_CURRENT_BINARY_DIR}/src")
+include_directories("${CMAKE_CURRENT_BINARY_DIR}"
+		${DPDK_INCLUDE_DIRS})
 
 # grpc_proto
 add_library(mult_grpc_proto
@@ -87,16 +85,6 @@ target_link_libraries(mult_grpc_proto
   OpenSSL::SSL
   OpenSSL::Crypto
   pthread)
-
-# function map 
-# add_library(distmult_function_map
-#  "function_map.h"
-#  "function_map.cc")
-#target_link_libraries(distmult_function_map
-#  mult_grpc_proto
-#  ${_REFLECTION}
-#  ${_GRPC_GRPCPP}
-#  ${_PROTOBUF_LIBPROTOBUF})
 
 # primary utils
 add_library(utils
@@ -165,7 +153,11 @@ foreach(_target
   # ${Boost_LIBRARIES}
   OpenSSL::SSL
   OpenSSL::Crypto
-  pthread)
+  pthread
+  ${DPDK_LIBRARIES}
+)
+
+ target_include_directories(${_target} PRIVATE ${DPDK_INCLUDE_DIRS})
 endforeach()
 
 #add_executable(test_resource_scheduler test_resource_scheduler.cc)
