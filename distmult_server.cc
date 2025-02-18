@@ -31,17 +31,18 @@ using std::chrono::system_clock;
 
 using matrixclass::MatrixClass;
 
+std::atomic<bool> running(true); // Flag to control the server loop
 
 class DistMultImpl final : public DistMultService::Service {
 public:
-    explicit DistMultImpl(TaskHandler* handler) : task_handler_(handler) {}
+    explicit DistMultImpl(TaskHandler* handler, const std::string& address, const std::string& port) : task_handler_(handler) {}
 
     ~DistMultImpl() {
       
     }
       std::cout << "Go Server Response: " << response <<std::endl;
  
-    return new StartComputeRPCServer(task_handler_, &mu_, address?)// ComputeRPC(task_handler_, &mu_);
+     return new StartComputeRPCServer((char*)address, (char*)port, task_handler_, &mu_)// ComputeRPC(task_handler_, &mu_);
   }
 
  private:
@@ -70,7 +71,12 @@ void RunServer(const std::string& task_type, uint32_t task_size, const std::stri
 //   DistMultImpl service(handler);
   DistMultImpl service(handler.get());
 
-  //NEED TO KEEP THIS ALIVE AS WELL NOW!!!!!!!!!!!!!!!!
+  //NEED TO KEEP THIS ALIVE AS WELL NOW!!!!!!!!!!!!!!!!i
+    while (running)
+    {
+        
+	   std::this_thread::sleep_for(std::chrono::seconds(1));//here I think the issue is....
+    }
 }
 
 

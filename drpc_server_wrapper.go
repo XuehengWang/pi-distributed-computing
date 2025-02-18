@@ -7,14 +7,13 @@ import (
     "sync"
     "time"
 
-    pb "path/to/your/generated/code" // Update with the correct import path
+    pb "distmult_service.pb.h"
     "storj.io/drpc"
     "net"
 )
 
 //Global server instance
 var server *drpc.Server
-
 
 // ComputeRPC handles the DRPC request processing
 type ComputeRPC struct {
@@ -25,10 +24,11 @@ type ComputeRPC struct {
 }
 
 // NewComputeRPC initializes the RPC handler
-func NewComputeRPC(handler *TaskHandler) *ComputeRPC {
-    c := &ComputeRPC{
+func NewComputeRPC(handler *TaskHandler, mu *sync.Mutex) *ComputeRPC {
+    return &ComputeRPC{
         taskHandler: handler,
-        stopThreads: false,
+	mu: 	     mu,
+	stopThreads: false,
     }
 
     handler.initializeBuffers()
@@ -169,12 +169,17 @@ func (c *ComputeRPC) writer() {
 }
 // StartComputeRPCServer starts the DRPC server and listens for connections
 //export StartComputeRPCServer
-func StartComputeRPCServer(port *C.char) *C.char {
+func StartComputeRPCServer(ip *C.char, port *C.char, taskHandlerPtr unsafe.Pointer, mutexPtr unsafe.Pointer) *C.char {
+    goIP := C.GoString(ip)
     goPort := C.GoString(port)
-    address := fmt.Sprintf(":%s", goPort)
+    address := fmt.Sprintf(":%s:%s", goIP, goPort)
+
+// Convert unsafe pointers to actual TaskHandler and Mutex
+    taskHandler := (*TaskHandler)(taskHandlerPtr)
+    mutex := (*sync.Mutex)(mutexPtr)
 
     server = drpc.NewServer()
-    pb.RegisterDRPCChatServiceServer(server, NewComputeRPC(&TaskHandler{}))
+    pb.RegisterDRPCChatServiceServer(server, NewComputeRPC(taskHandler, mutex))
 
     listener, err := net.Listen("tcp", address)
     if err != nil {
