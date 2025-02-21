@@ -66,7 +66,7 @@ public:
 private:
     // We will use buffer_id (0/1) and compute_thread_id to locate buffer entry
     // There should not be threads working on the same buffer
-    alignas(64) matrix_buffer_t buffers_[8];
+    alignas(64) matrix_buffer_t buffers_[9];
     uint32_t n_;
     /* 
     For compute threads, can move to generic class later
@@ -78,6 +78,7 @@ private:
     std::queue<task_result_t> output_queue_;
     std::queue<uint32_t> input_queue_[4]; //buffer_id
     std::atomic<int> tasks_pending;
+    std::atomic<int>buffer_index_;
 
     uint32_t resources_[4]; //resource count of each compute core
     uint32_t last_buffer_[4];

@@ -32,6 +32,8 @@ using std::chrono::system_clock;
 
 using matrixclass::MatrixClass;
 
+#define NUM_THREADS 1
+#define BUFFER_SIZE 3
 std::atomic<bool> running(true); // Flag to control the server loop
 
 class DistMultServer
@@ -68,14 +70,11 @@ public:
             exit(EXIT_FAILURE);
         }
         char str[INET_ADDRSTRLEN];
-        std::cout << "Server connected:" << inet_ntop(AF_INET, &server_addr.sin_addr, str, INET_ADDRSTRLEN) << std::endl;
         handler->initialize_buffers();
-        // stop_writer_thread_ = true;
         client_socket_ = accept_client();
-        // close(server_socket_);
-        if (client_socket_ != -1)
+       
+       	if (client_socket_ != -1)
         {
-            std::cout << "Start reader and writer threads" << std::endl;
             reader_thread_ = std::thread(&DistMultServer::start_reading, this);
             writer_thread_ = std::thread(&DistMultServer::writer_thread, this);
         
@@ -123,129 +122,88 @@ private:
             return -1;
         }
         char str[INET_ADDRSTRLEN];
-        std::cout << "Client connected:" << inet_ntop(AF_INET, &client_addr.sin_addr, str, INET_ADDRSTRLEN) << std::endl;
         return new_socket;
     }
 
-    void start_reading()
-    {
-	while (!stop_writer_thread_){    
-	       struct pollfd pfd;
-	       pfd.fd = client_socket_;
-	       pfd.events = POLLIN; // Wait for incoming data
-		struct epoll_event event;
-		int epoll_fd = epoll_create1(0);
-		event.events = POLLIN;
-		event.data.fd = pfd.fd;
-		epoll_ctl(epoll_fd, EPOLL_CTL_ADD, pfd.fd, &event);
+    void start_reading() {
+        while (!stop_writer_thread_) {
+            struct pollfd pfd;
+            pfd.fd = client_socket_;
+            pfd.events = POLLIN;
 
-		struct epoll_event events[1];
-	      while (client_socket_ != -1)
-	      {
-		int ret = epoll_wait(epoll_fd, events, 1, 100);//int ret = poll(&pfd, 1, 100);
-		if (pfd.revents & POLLHUP || pfd.revents & POLLERR || pfd.revents & POLLNVAL) {
-		    std::cerr << "Socket closed by the peer! Attempting to reconnect..." << std::endl;
-		    return;
-		} else if (ret > 0/** && (pfd.revents & POLLIN)**/)
-		{
-		    uint32_t size;
-		    ssize_t bytes_received = recv(client_socket_, &size, sizeof(size), MSG_WAITALL);
-		    if (bytes_received == 0) {
-		      current_buffer_ = task_handler_->select_next_buffer();
-                      int buffer_id = current_buffer_;// / 4;
-                      int thread_id = 0;//current_buffer_;// % 4;
-                      
-		      std::cout << "buffer_id: " << buffer_id << " thread_id: " << thread_id << std::endl; 
-		      request_ = (MatrixRequest *)task_handler_->get_buffer_request(buffer_id, thread_id);
-                      request_->set_task_id(-1);
- 	              task_handler_->process_request(buffer_id, thread_id);
+            struct epoll_event event;
+            int epoll_fd = epoll_create1(0);
+            event.events = POLLIN;
+            event.data.fd = pfd.fd;
+            epoll_ctl(epoll_fd, EPOLL_CTL_ADD, pfd.fd, &event);
 
-		      stop_writer_thread_ = true;
-		      client_socket_ = -1;
-		      return;
-		    } else if (bytes_received == -1) {
-			perror("recv() failed");
-			return;
-		   }
-		    size = ntohl(size);
-		    
-		    if (size == sizeof(int)){
-			int32_t result = 0;
-			recv(client_socket_, &result, size, MSG_WAITALL);
-			if (result == -1){
-			  	//anything here
-				return; 
-			}
-		    
-		    }
-		    current_buffer_ = task_handler_->select_next_buffer();
-		    int buffer_id = current_buffer_;// / 4;
-		    int thread_id = 0;//current_buffer_;// % 4;
-		    std::cout << "current buffer is: " << current_buffer_ << std::endl; 
-		    request_ = (MatrixRequest *)task_handler_->get_buffer_request(buffer_id, thread_id);
-		    std::string buffer(size, 0);
-		    recv(client_socket_, &buffer[0], size, MSG_WAITALL);
+            struct epoll_event events[1];
+            while (client_socket_ != -1) {
+                int ret = epoll_wait(epoll_fd, events, 1, 1000);
+                if (ret > 0) {
+                    uint32_t size;
+                    ssize_t bytes_received = recv(client_socket_, &size, sizeof(size), MSG_WAITALL);
+                    if (bytes_received <= 0) {
+			
+			int all_id = task_handler_->select_next_buffer();// / NUM_THREADS;
+			int buffer_id = all_id / NUM_THREADS;
+			int thread_id = all_id % NUM_THREADS;
+			if (buffer_id == -1) return;
 
-		    if (!request_->ParseFromString(buffer))
-		    {
-			std::cerr << "Failed to parse protobuf message" << std::endl;
-			return;
-
-		    }
-		    else
-		    {
-			std::cout << "task_id is: " << request_->task_id() << std::endl;
+                    	MatrixRequest *request = static_cast<MatrixRequest *>(task_handler_->get_buffer_request(buffer_id, thread_id));
+                        request->set_task_id(-1);
 			task_handler_->process_request(buffer_id, thread_id);
-		    }
-		    break;
-		}
-		else if (ret == 0)
-		{
-		}
-		else
-		{
-		    break;
-		}
-
-	      }
-	}
-    }
-
-    void writer_thread()
-    {
-        while (!stop_writer_thread_)
-        {
-	    int response_id = task_handler_->check_response();
-            if (response_id == -1)
-            {
-                LOG(INFO) << "OHNO Server writer: check response returns -1";
-            }
-            else
-            {
-                int buffer_id = response_id;// / 4;
-                int thread_id = 0;// response_id % 4;
-		std::cout << "buffer_id: " << buffer_id << " thread_id: " << thread_id << std::endl; 
-		response_ = (MatrixResponse *)task_handler_->get_buffer_response(buffer_id, thread_id);
-
-                std::string serialized_response;
-                response_->SerializeToString(&serialized_response);
-                uint32_t size = htonl(serialized_response.size());
-                std::string final_message;                                                 // can we combine so this just uses one string
-                final_message.append(reinterpret_cast<const char *>(&size), sizeof(size)); // Prefix with size
-                final_message.append(serialized_response);                                 // Append protobuf data
-
-                if (client_socket_ != -1)
-                {
-                    if (send(client_socket_, final_message.c_str(), final_message.size(), 0) == -1)
-                    {
-                        perror("Failed to send response");
+			stop_writer_thread_ = true;
+                        client_socket_ = -1;
+                        return;
                     }
-           	    task_handler_->add_resource(thread_id);
+                    size = ntohl(size);
+                    int all_id = task_handler_->select_next_buffer();// / NUM_THREADS;
+                    int buffer_id = all_id / NUM_THREADS;
+		    int thread_id = all_id % NUM_THREADS;
+                    if (buffer_id == -1) return;
+
+                    MatrixRequest *request = static_cast<MatrixRequest *>(task_handler_->get_buffer_request(buffer_id, thread_id));
+	            LOG(INFO) << "IO reader: Current buffer is " << buffer_id << "given to thread " << thread_id;
+
+                    std::string buffer(size, 0);
+                    recv(client_socket_, &buffer[0], size, MSG_WAITALL);
+
+                    if (!request->ParseFromString(buffer)) {
+                        std::cerr << "Failed to parse protobuf message" << std::endl;
+                        return;
+                    }
+		    LOG(INFO) << "reader: recieved task " << request->task_id();
+                    task_handler_->process_request(buffer_id, thread_id);
                 }
             }
         }
     }
 
+    void writer_thread() {
+        while (!stop_writer_thread_) {
+            int response_id = task_handler_->check_response();
+	    LOG(INFO) << "Server writer: Checking response...buffer id is " << response_id;
+            if (response_id != -1) {
+                int buffer_id = response_id / NUM_THREADS;
+		int thread_id = response_id % NUM_THREADS;
+                MatrixResponse *response = static_cast<MatrixResponse *>(task_handler_->get_buffer_response(buffer_id, thread_id));
+		LOG(INFO) << "Details of response fetched are: " << response->task_id() << " " << buffer_id << " " << thread_id;
+                std::string serialized_response;
+                response->SerializeToString(&serialized_response);
+                uint32_t size = htonl(serialized_response.size());
+                std::string final_message;
+                final_message.append(reinterpret_cast<const char *>(&size), sizeof(size));
+                final_message.append(serialized_response);
+                if (client_socket_ != -1) {
+                    send(client_socket_, final_message.c_str(), final_message.size(), 0);
+                    task_handler_->add_resource(thread_id);
+		    std::cout << "Message sent: resource available" << std::endl;
+                }
+            }
+        }
+    }
+    
     void stop()
     {
       
