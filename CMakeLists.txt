@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 find_package(Threads REQUIRED)
 
-# assume gRPC and all its dependencies are installed,  we use find_package() to locate them
+# assume gRPC and all its dependencies are installed, we use find_package() to locate them
 
 # Protobuf installation
 option(protobuf_MODULE_COMPATIBLE TRUE)
@@ -39,10 +39,72 @@ set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
 # Find absl package (log)
 find_package(absl CONFIG REQUIRED)
 
-# Find DPDK
+# Find BPF and XDP libraries
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(DPDK REQUIRED libdpdk)
-message(STATUS "Using DPDK ${DPDK_VERSION}")
+pkg_check_modules(LIBBPF REQUIRED libbpf)
+pkg_check_modules(LIBXDP REQUIRED libxdp)
+message(STATUS "Using libbpf ${LIBBPF_VERSION}")
+message(STATUS "Using libxdp ${LIBXDP_VERSION}")
+
+#-------- Build AF_XDP Kernel (BPF) Program --------
+# Path to your BPF program source file
+set(BPF_SRC "${CMAKE_CURRENT_SOURCE_DIR}/xdp/af_xdp_kern.c")
+# Output object file (you can adjust the name/location as needed.)
+set(BPF_OBJ "${CMAKE_BINARY_DIR}/af_xdp_kern.o")
+
+# Find clang which is needed for the BPF compilation.
+find_program(CLANG clang REQUIRED)
+if(NOT CLANG)
+  message(FATAL_ERROR "clang is required for compiling the BPF program")
+endif()
+message(STATUS "Using clang: ${CLANG}")
+
+#Add a custom command to compile the bpf object
+add_custom_command(
+	OUTPUT ${BPF_OBJ}
+	COMMAND ${CLANG} -O2 -g -target bpf -D__TARGET_ARCH_arm64 -Wall -Werror -c ${BPF_SRC} -o ${BPF_OBJ} 
+	DEPENDS ${BPF_SRC}
+	COMMENT "Compiling AF_XDP kernel BPF program: ${BPF_SRC} -> ${BPF_OBJ}"
+)
+
+# Create a custom target that compiles the BPF program using clang.
+add_custom_target(af_xdp_kern ALL
+  DEPENDS ${BPF_OBJ}
+)
+
+# Assuming the Makefile that builds common objects is in the "common" folder.
+set(COMMON_DIR "${CMAKE_CURRENT_SOURCE_DIR}/common")
+
+# Create a custom target that runs the external make command.
+add_custom_target(common_objs ALL
+  COMMAND +${CMAKE_MAKE_PROGRAM} -C ${COMMON_DIR}
+  COMMENT "Building common objects using external Makefile in ${COMMON_DIR}"
+)
+
+# List the object files that the external Makefile produces.
+set(COMMON_OBJS
+    "${COMMON_DIR}/common_params.o"
+    "${COMMON_DIR}/common_user_bpf_xdp.o"
+)
+
+
+# Create a custom command to archive these object files into a static library.
+# This assumes that your external Makefile does not already produce a static library.
+add_custom_command(
+  OUTPUT "${COMMON_DIR}/libcommon.a"
+  COMMAND ${CMAKE_AR} rcs "${COMMON_DIR}/libcommon.a" ${COMMON_OBJS}
+  DEPENDS common_objs
+  COMMENT "Archiving common objects into libcommon.a"
+)
+
+# Create a custom target that depends on the static library.
+add_custom_target(libcommon ALL DEPENDS "${COMMON_DIR}/libcommon.a")
+
+# Create an IMPORTED static library target so that CMake can link against it.
+add_library(common_lib STATIC IMPORTED)
+set_target_properties(common_lib PROPERTIES
+  IMPORTED_LOCATION "${COMMON_DIR}/libcommon.a"
+)
 
 # Proto file
 get_filename_component(mult_proto "./protos/distmult_service.proto" ABSOLUTE)
@@ -66,9 +128,12 @@ add_custom_command(
         "${mult_proto}"
       DEPENDS "${mult_proto}")
 
-# Include generated *.pb.h files
-include_directories("${CMAKE_CURRENT_BINARY_DIR}"
-		${DPDK_INCLUDE_DIRS})
+# Include directories
+include_directories(
+  "${CMAKE_CURRENT_BINARY_DIR}"
+  ${LIBBPF_INCLUDE_DIRS}
+  ${LIBXDP_INCLUDE_DIRS}
+)
 
 # grpc_proto
 add_library(mult_grpc_proto
@@ -138,6 +203,8 @@ foreach(_target
   add_executable(${_target}
     "${_target}.cc")
   target_link_libraries(${_target}
+  PRIVATE 
+    common_lib
     mult_grpc_proto
     task_handler
     resource_scheduler
@@ -154,10 +221,12 @@ foreach(_target
   OpenSSL::SSL
   OpenSSL::Crypto
   pthread
-  ${DPDK_LIBRARIES}
+  ${LIBBPF_LIBRARIES}
+  ${LIBXDP_LIBRARIES}
 )
-
- target_include_directories(${_target} PRIVATE ${DPDK_INCLUDE_DIRS})
+  target_include_directories(${_target} PRIVATE ${LIBBPF_INCLUDE_DIRS} ${LIBXDP_INCLUDE_DIRS})
+  # Ensure the BPF program is compiled before the executable (if runtime loading depends on it)
+  add_dependencies(${_target} af_xdp_kern libcommon)
 endforeach()
 
 #add_executable(test_resource_scheduler test_resource_scheduler.cc)
@@ -165,3 +234,4 @@ endforeach()
 
 #enable_testing()
 #add_test(NAME test_resource_scheduler COMMAND test_resource_scheduler)
+
