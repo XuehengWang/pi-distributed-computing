@@ -226,7 +226,7 @@ foreach(_target
 )
   target_include_directories(${_target} PRIVATE ${LIBBPF_INCLUDE_DIRS} ${LIBXDP_INCLUDE_DIRS})
   # Ensure the BPF program is compiled before the executable (if runtime loading depends on it)
-  add_dependencies(${_target} af_xdp_kern libcommon)
+    add_dependencies(${_target} af_xdp_kern libcommon)
 endforeach()
 
 #add_executable(test_resource_scheduler test_resource_scheduler.cc)
