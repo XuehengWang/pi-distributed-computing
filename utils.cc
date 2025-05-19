@@ -1,4 +1,5 @@
 #include "utils.h"
+#include <kj/array.h>
 
 namespace utils{
 
@@ -62,6 +63,25 @@ void matrix_t::print_matrix() const {
         }
     }
     std::cout << std::endl;
+}
+
+void matrix_t::loadFromCapnp(MatrixTask::Reader reader) {
+    n = reader.getN();
+    auto inputBytes = reader.getInputA();
+    size_t expectedBytes = n * n * sizeof(double);
+
+    KJ_REQUIRE(inputBytes.size() == expectedBytes, "Unexpected data size in inputA");
+
+    data = new double[n * n];
+    memcpy(data, inputBytes.begin(), expectedBytes);
+}
+
+void matrix_t::serializeToCapnp(MatrixResult::Builder builder) const {
+    builder.setN(n);
+    builder.setTaskId(-1); // or use real task_id if available
+
+    auto resultBytes = kj::arrayPtr(reinterpret_cast<const capnp::byte*>(data), n * n * sizeof(double));
+    builder.setResult(resultBytes);
 }
 
 // void matrix_t::print_submatrix(size_t row_start, size_t col_start, size_t submatrix_size) const {

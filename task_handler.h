@@ -12,10 +12,9 @@
 
 #include <blis/blis.h>
 
-#include "distmult_service.pb.h"
-#include "distmult_service.grpc.pb.h"
+#include <capnp/message.h>
+#include "matrix.capnp.h"
 #include "utils.h"
-
 
 class TaskHandler {
 public:
@@ -23,11 +22,13 @@ public:
     virtual int select_next_buffer() = 0;
     virtual void* get_buffer_request(int buffer_id, int thread_id) = 0;
     virtual void* get_buffer_response(int buffer_id, int thread_id) = 0;
-    virtual void process_request(int buffer_id, int thread_id) = 0;
     virtual int check_response() = 0;
     virtual void add_resource(int thread_id) = 0;
     virtual void initialize_buffers() = 0;
 
+    // Cap'n Proto specific extensions
+    virtual void process_request(MatrixTask::Reader taskMsg, int buffer_id, int thread_id) = 0;
+    virtual void serialize_result(int buffer_id, MatrixResult::Builder& resultBuilder) = 0;
 };
 
 #endif  // TASK_HANDLER_H

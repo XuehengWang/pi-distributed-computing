@@ -1,141 +1,180 @@
-cmake_minimum_required(VERSION 3.8)
-
-project(DistMultService C CXX)
+cmake_minimum_required(VERSION 3.15)
+project(pi-distributed-computing)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Threads REQUIRED)
+# ----------------------------
+# Dependencies
+# ----------------------------
 
-# assume gRPC and all its dependencies are installed,  we use find_package() to locate them
-
-# Protobuf installation
+# Protobuf
 option(protobuf_MODULE_COMPATIBLE TRUE)
 find_package(Protobuf CONFIG REQUIRED)
 message(STATUS "Using protobuf ${Protobuf_VERSION}")
 
 set(_PROTOBUF_LIBPROTOBUF protobuf::libprotobuf)
-set(_REFLECTION gRPC::grpc++_reflection)
-
 set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
 
-# gRPC installation
-# Looks for gRPCConfig.cmake file installed by gRPC's cmake installation.
-find_package(gRPC CONFIG REQUIRED)
-message(STATUS "Using gRPC ${gRPC_VERSION}")
-
-set(_GRPC_GRPCPP gRPC::grpc++)
-set(_GRPC_CPP_PLUGIN_EXECUTABLE $<TARGET_FILE:gRPC::grpc_cpp_plugin>)
-
-# From gRPC examples
-# Find absl package (log)
+# Abseil (for logging)
 find_package(absl CONFIG REQUIRED)
 
+# # Cap’n Proto
+# find_package(CapnProto CONFIG REQUIRED)
+# message(STATUS "CapnProto found: ${CapnProto_FOUND}")
 
-# Proto file
-get_filename_component(mult_proto "./protos/distmult_service.proto" ABSOLUTE)
-get_filename_component(mult_proto_path "${mult_proto}" PATH)
+# ----------------------------
+# Cap’n Proto (manual integration using pkg-config)
+# ----------------------------
 
+# find_package(PkgConfig REQUIRED)
+# pkg_check_modules(CAPNP REQUIRED capnp)
+# pkg_check_modules(CAPNP_RPC REQUIRED capnp-rpc)
 
-# blis 
-# find_package(BLIS CONFIG REQUIRED)
+# # Set Cap’n Proto compiler
+# find_program(CAPNP_COMPILER capnp)
+# if(NOT CAPNP_COMPILER)
+#   message(FATAL_ERROR "capnp compiler not found. Please install Cap'n Proto or add it to your PATH.")
+# endif()
+# message(STATUS "Using Cap’n Proto compiler: ${CAPNP_COMPILER}")
 
-# Generated sources in build, will move to src
-set(mult_proto_srcs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.pb.cc")
-set(mult_proto_hdrs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.pb.h")
-set(mult_grpc_srcs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.grpc.pb.cc")
-set(mult_grpc_hdrs "${CMAKE_CURRENT_BINARY_DIR}/distmult_service.grpc.pb.h")
-add_custom_command(
-      OUTPUT "${mult_proto_srcs}" "${mult_proto_hdrs}" "${mult_grpc_srcs}" "${mult_grpc_hdrs}"
-      COMMAND ${_PROTOBUF_PROTOC}
-      ARGS --grpc_out "${CMAKE_CURRENT_BINARY_DIR}"
-        --cpp_out "${CMAKE_CURRENT_BINARY_DIR}"
-        -I "${mult_proto_path}"
-        --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
-        "${mult_proto}"
-      DEPENDS "${mult_proto}")
+# # Add Cap’n Proto include and lib dirs globally
+# include_directories(${CAPNP_INCLUDE_DIRS} ${CAPNP_RPC_INCLUDE_DIRS})
+# link_directories(${CAPNP_LIBRARY_DIRS} ${CAPNP_RPC_LIBRARY_DIRS})
 
-# Include generated *.pb.h files
-include_directories("${CMAKE_CURRENT_BINARY_DIR}")
-# include_directories("${CMAKE_CURRENT_BINARY_DIR}/src")
+# # ----------------------------
+# # Cap’n Proto Schema
+# # ----------------------------
 
-# grpc_proto
-add_library(mult_grpc_proto
-  ${mult_grpc_srcs}
-  ${mult_grpc_hdrs}
-  ${mult_proto_srcs}
-  ${mult_proto_hdrs})
-target_link_libraries(mult_grpc_proto
-  absl::absl_log
-  ${_REFLECTION}
-  ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF})
+# set(SCHEMA_FILE ${CMAKE_SOURCE_DIR}/protos/matrix.capnp)
+# set(GENERATED_DIR ${CMAKE_BINARY_DIR}/protos)
+# set(GENERATED_SRC ${GENERATED_DIR}/matrix.capnp.c++)
+# set(GENERATED_HDR ${GENERATED_DIR}/matrix.capnp.h)
 
-# function map 
-# add_library(distmult_function_map
-#  "function_map.h"
-#  "function_map.cc")
-#target_link_libraries(distmult_function_map
-#  mult_grpc_proto
-#  ${_REFLECTION}
-#  ${_GRPC_GRPCPP}
-#  ${_PROTOBUF_LIBPROTOBUF})
+# file(MAKE_DIRECTORY ${GENERATED_DIR})
 
-# primary utils
+# add_custom_command(
+#   OUTPUT ${GENERATED_SRC} ${GENERATED_HDR}
+#   COMMAND ${CAPNP_COMPILER} compile -oc++:${GENERATED_DIR} --src-prefix=${CMAKE_SOURCE_DIR}/protos ${SCHEMA_FILE}
+#   DEPENDS ${SCHEMA_FILE}
+#   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/protos
+#   COMMENT "Generating Cap'n Proto sources..."
+# )
+
+# add_custom_target(generate_capnp ALL DEPENDS ${GENERATED_SRC} ${GENERATED_HDR})
+
+# set(CAPNP_SRCS ${GENERATED_SRC})
+# set(CAPNP_HDRS ${GENERATED_HDR})
+
+set(CAPNP_SRCS ${CMAKE_SOURCE_DIR}/protos/matrix.capnp.c++)
+set(CAPNP_HDRS ${CMAKE_SOURCE_DIR}/protos/matrix.capnp.h)
+# ----------------------------
+# Targets
+# ----------------------------
+
 add_library(utils
-  "utils.h"
-  "utils.cc")
-target_link_libraries(utils
-  mult_grpc_proto
-  ${_REFLECTION}
-  ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF})
+  utils.cc
+  utils.h
+  ${CAPNP_SRCS}
+  ${CAPNP_HDRS}
+)
+#add_dependencies(utils generate_capnp)
 
-# task_handler class
+target_include_directories(utils
+  PRIVATE
+    ${CMAKE_SOURCE_DIR}/protos
+    ${CMAKE_BINARY_DIR}/protos
+    ${CMAKE_CURRENT_BINARY_DIR}/protos
+)
+
+target_link_libraries(utils
+  PRIVATE
+    mult_grpc_proto
+    ${_PROTOBUF_LIBPROTOBUF}
+    ${CAPNP_LIBRARIES}
+    ${CAPNP_RPC_LIBRARIES}
+)
+# if(TARGET CapnProto::capnp-rpc)
+#   target_link_libraries(utils PRIVATE CapnProto::capnp-rpc)
+# endif()
+
+# task_handler
 add_library(task_handler
-  "task_handler.h"
-  "matrix_handler.h"
-  "matrix_handler.cc")
+  task_handler.h
+  matrix_handler.cc
+  matrix_handler.h
+)
+target_include_directories(task_handler
+  PRIVATE
+    ${CMAKE_SOURCE_DIR}/protos
+    ${CMAKE_CURRENT_BINARY_DIR}/protos
+)
 target_link_libraries(task_handler
-  mult_grpc_proto
   utils
   blis
-  ${_REFLECTION}
-  ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF})
+  ${_PROTOBUF_LIBPROTOBUF}
+)
 
-# Primary node resource scheduler
-add_library(resource_scheduler STATIC resource_scheduler.cc resource_scheduler.h)
+# resource_scheduler
+add_library(resource_scheduler STATIC
+  resource_scheduler.cc
+  resource_scheduler.h
+)
 target_link_libraries(resource_scheduler
-  mult_grpc_proto
   utils
-  ${_REFLECTION}
-  ${_GRPC_GRPCPP}
-  ${_PROTOBUF_LIBPROTOBUF})
+  ${_PROTOBUF_LIBPROTOBUF}
+)
 
-# target_include_directories(resource_scheduler PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+add_library(capnp_matrix_client
+  CapnpMatrixClient.cc
+  CapnpMatrixClient.h
+)
+target_link_libraries(capnp_matrix_client
+  utils
+  ${CAPNP_LIBRARIES}
+  ${CAPNP_RPC_LIBRARIES}
+)
 
-# Targets distmult_(client|server)
-foreach(_target
-  distmult_client distmult_server)
-  add_executable(${_target}
-    "${_target}.cc")
-  target_link_libraries(${_target}
-    mult_grpc_proto
-    task_handler
-    resource_scheduler
-    utils
-    blis
-    absl::flags_parse
-    absl::absl_log
-    absl::log_initialize
-    absl::log_globals
-    ${_REFLECTION}
-    ${_GRPC_GRPCPP}
-    ${_PROTOBUF_LIBPROTOBUF})
+# Cap'n Proto-aware executables
+foreach(_target distmult_client distmult_server)
+  set(_src "${CMAKE_CURRENT_SOURCE_DIR}/${_target}.cc")
+  if(EXISTS "${_src}")
+    message(STATUS "Adding executable: ${_target}")
+    add_executable(${_target} "${_src}")
+    target_link_libraries(${_target}
+      task_handler
+      resource_scheduler
+      utils
+      capnp_matrix_client     # <-- add CapnpMatrixClient logic
+      blis
+      absl::flags_parse
+      absl::absl_log
+      absl::log_initialize
+      absl::log_globals
+      ${CAPNP_LIBRARIES}
+      ${CAPNP_RPC_LIBRARIES}
+      ${_PROTOBUF_LIBPROTOBUF}
+    )
+  else()
+    message(WARNING "Source file missing for target ${_target}: ${_src}")
+  endif()
 endforeach()
 
-add_executable(test_resource_scheduler test_resource_scheduler.cc)
-target_link_libraries(test_resource_scheduler PRIVATE resource_scheduler)
+# perhaps I need the linker flags like here:
+# If Cap'n Proto is installed, build the sample like:
+# //   capnp compile -oc++ addressbook.capnp
+# //   c++ -std=c++14 -Wall addressbook.c++ addressbook.capnp.c++ `pkg-config --cflags --libs capnp` -o addressbook
+# //
+# // If Cap'n Proto is not installed, but the source is located at $SRC and has been
+# // compiled in $BUILD (often both are simply ".." from here), you can do:
+# //   $BUILD/capnp compile -I$SRC/src -o$BUILD/capnpc-c++ addressbook.capnp
+# //   c++ -std=c++14 -Wall addressbook.c++ addressbook.capnp.c++ -I$SRC/src -L$BUILD/.libs -lcapnp -lkj -o addressbook
 
-enable_testing()
-add_test(NAME test_resource_scheduler COMMAND test_resource_scheduler)
+# # test target
+# add_executable(test_resource_scheduler test_resource_scheduler.cc)
+# target_link_libraries(test_resource_scheduler PRIVATE resource_scheduler)
+
+# # ----------------------------
+# # Optional: Install rules
+# # ----------------------------
+# # install(TARGETS utils task_handler distmult_client distmult_server DESTINATION bin)
