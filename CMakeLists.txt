@@ -1,8 +1,11 @@
 cmake_minimum_required(VERSION 3.15)
 project(pi-distributed-computing)
 
+add_compile_options(-UVOID)  # <--- 💡 This fixes the Cap’n Proto conflict
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 
 # ----------------------------
 # Dependencies
@@ -20,8 +23,8 @@ set(_PROTOBUF_PROTOC $<TARGET_FILE:protobuf::protoc>)
 find_package(absl CONFIG REQUIRED)
 
 # # Cap’n Proto
-# find_package(CapnProto CONFIG REQUIRED)
-# message(STATUS "CapnProto found: ${CapnProto_FOUND}")
+find_package(CapnProto CONFIG REQUIRED)
+message(STATUS "CapnProto found: ${CapnProto_FOUND}")
 
 # ----------------------------
 # Cap’n Proto (manual integration using pkg-config)
@@ -82,17 +85,18 @@ add_library(utils
 
 target_include_directories(utils
   PRIVATE
+    ${CMAKE_SOURCE_DIR} 
     ${CMAKE_SOURCE_DIR}/protos
     ${CMAKE_BINARY_DIR}/protos
-    ${CMAKE_CURRENT_BINARY_DIR}/protos
+    ${CMAKE_CURRENT_BINARY_DIR}/protos         # <-- Add this line
 )
 
 target_link_libraries(utils
   PRIVATE
-    mult_grpc_proto
+    #mult_grpc_proto
     ${_PROTOBUF_LIBPROTOBUF}
-    ${CAPNP_LIBRARIES}
-    ${CAPNP_RPC_LIBRARIES}
+    CapnProto::capnp
+    CapnProto::capnp-rpc
 )
 # if(TARGET CapnProto::capnp-rpc)
 #   target_link_libraries(utils PRIVATE CapnProto::capnp-rpc)
@@ -106,6 +110,7 @@ add_library(task_handler
 )
 target_include_directories(task_handler
   PRIVATE
+    ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/protos
     ${CMAKE_CURRENT_BINARY_DIR}/protos
 )
@@ -131,50 +136,40 @@ add_library(capnp_matrix_client
 )
 target_link_libraries(capnp_matrix_client
   utils
-  ${CAPNP_LIBRARIES}
-  ${CAPNP_RPC_LIBRARIES}
+  CapnProto::capnp
+  CapnProto::capnp-rpc
+)
+target_include_directories(capnp_matrix_client
+  PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/protos
+    ${CMAKE_CURRENT_BINARY_DIR}/protos
 )
 
-# Cap'n Proto-aware executables
+#Cap'n Proto-aware executables
 foreach(_target distmult_client distmult_server)
   set(_src "${CMAKE_CURRENT_SOURCE_DIR}/${_target}.cc")
   if(EXISTS "${_src}")
-    message(STATUS "Adding executable: ${_target}")
     add_executable(${_target} "${_src}")
     target_link_libraries(${_target}
       task_handler
       resource_scheduler
       utils
-      capnp_matrix_client     # <-- add CapnpMatrixClient logic
+      capnp_matrix_client
       blis
       absl::flags_parse
       absl::absl_log
       absl::log_initialize
       absl::log_globals
-      ${CAPNP_LIBRARIES}
-      ${CAPNP_RPC_LIBRARIES}
+      CapnProto::capnp
+      CapnProto::capnp-rpc
       ${_PROTOBUF_LIBPROTOBUF}
     )
-  else()
-    message(WARNING "Source file missing for target ${_target}: ${_src}")
+    target_include_directories(${_target}
+      PRIVATE
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/protos
+    )
   endif()
 endforeach()
 
-# perhaps I need the linker flags like here:
-# If Cap'n Proto is installed, build the sample like:
-# //   capnp compile -oc++ addressbook.capnp
-# //   c++ -std=c++14 -Wall addressbook.c++ addressbook.capnp.c++ `pkg-config --cflags --libs capnp` -o addressbook
-# //
-# // If Cap'n Proto is not installed, but the source is located at $SRC and has been
-# // compiled in $BUILD (often both are simply ".." from here), you can do:
-# //   $BUILD/capnp compile -I$SRC/src -o$BUILD/capnpc-c++ addressbook.capnp
-# //   c++ -std=c++14 -Wall addressbook.c++ addressbook.capnp.c++ -I$SRC/src -L$BUILD/.libs -lcapnp -lkj -o addressbook
-
-# # test target
-# add_executable(test_resource_scheduler test_resource_scheduler.cc)
-# target_link_libraries(test_resource_scheduler PRIVATE resource_scheduler)
-
-# # ----------------------------
-# # Optional: Install rules
-# # ----------------------------
-# # install(TARGETS utils task_handler distmult_client distmult_server DESTINATION bin)

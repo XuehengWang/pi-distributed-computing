@@ -15,10 +15,11 @@ public:
                     std::mutex& resultMutex,
                     int submatrixSize);
 
-  void submitTask(task_node_t* task);
+  void submitTask(utils::task_node_t* task);
 
 private:
   MatrixManager::Client stub_;
+  kj::WaitScope& waitScope_;
   std::queue<int>& resultQueue_;
   std::condition_variable& resultCv_;
   std::mutex& resultMutex_;

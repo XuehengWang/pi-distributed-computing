@@ -12,7 +12,11 @@
 
 #include <blis/blis.h>
 
-#include <capnp/message.h>
+//#include <capnp/message.h>
+
+#ifdef VOID
+#undef VOID
+#endif
 #include "matrix.capnp.h"
 #include "utils.h"
 

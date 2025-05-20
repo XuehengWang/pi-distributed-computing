@@ -1,8 +1,12 @@
-#include "matrix_handler.h"
-#include <capnp/message.h>
-#include <capnp/serialize.h>
-#include "matrix.capnp.h"
 
+#ifdef VOID
+#undef VOID
+#endif
+
+#include "matrix_handler.h"
+//#include <capnp/message.h>
+//#include <capnp/serialize.h>
+//#include "matrix.capnp.h"
 
 namespace matrixclass {
 
@@ -72,9 +76,15 @@ void MatrixClass::process_request(MatrixTask::Reader taskMsg, int buffer_id, int
     }
 
     buffer.data.task_id = taskMsg.getTaskId();
-    buffer.data.ops = static_cast<utils::FunctionID>(taskMsg.getOps());
-    taskMsg.getInputA().copyTo(buffer.data.inputA, n_ * n_);
-    taskMsg.getInputB().copyTo(buffer.data.inputB, n_ * n_);
+    std::string opStr = taskMsg.getOps().cStr();
+    buffer.data.ops = utils::parseFunctionID(opStr);
+
+    auto inputA = taskMsg.getInputA();
+    auto inputB = taskMsg.getInputB();
+    KJ_IASSERT(inputA.size() == n_ * n_);
+    KJ_IASSERT(inputB.size() == n_ * n_);
+    memcpy(buffer.data.inputA, inputA.begin(), inputA.size());
+    memcpy(buffer.data.inputB, inputB.begin(), inputB.size());
 
     {
         std::unique_lock<std::mutex> lock(input_locks_[0]);

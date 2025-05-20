@@ -12,11 +12,15 @@
 #include <set>
 #include <atomic>
 
+using utils::task_node_t;
+using utils::matrix_t;
+
 class CapnpClusterManager {
 public:
   CapnpClusterManager(std::vector<std::string>& addresses, int matrixSize, int submatrixSize,
                       std::vector<task_node_t*>& allTasks, std::vector<task_node_t*>& initialTasks)
-    : matrixSize_(matrixSize), submatrixSize_(submatrixSize), allTasks_(allTasks), initialTasks_(initialTasks), stopFlag_(false) {
+    : matrixSize_(matrixSize), submatrixSize_(submatrixSize), allTasks_(allTasks), initialTasks_(initialTasks.begin(), initialTasks.end())
+    , stopFlag_(false) {
 
     for (size_t i = 0; i < addresses.size(); ++i) {
       clients_.emplace_back(std::make_unique<capnp::EzRpcClient>(addresses[i]));
@@ -38,6 +42,7 @@ public:
     }
     if (readerThread_.joinable()) readerThread_.join();
   }
+
 
 private:
   void taskWriter() {
@@ -152,6 +157,7 @@ int main(int argc, char** argv) {
 
   std::cout << "Created " << allTasks.size() << " total tasks, launching..." << std::endl;
   CapnpClusterManager manager(addresses, matrixSize, submatrixSize, allTasks, initialTasks);
+  //manager.waitUntilComplete();  // implement a condition that joins threads and returns when done
 
   return 0;
 }

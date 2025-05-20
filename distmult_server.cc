@@ -1,7 +1,7 @@
 // Converted version of your gRPC-based server to Cap'n Proto style (MatrixManagerImpl)
 #include <capnp/ez-rpc.h>
-#include <capnp/message.h>
-#include "matrix.capnp.h"  // Cap'n Proto schema you must define and compile
+//#include <capnp/message.h>
+//#include "matrix.capnp.h"  // Cap'n Proto schema you must define and compile
 #include <unordered_map>
 
 #include <thread>
@@ -22,7 +22,7 @@ class MatrixManagerImpl final : public MatrixManager::Server {
 public:
   MatrixManagerImpl(MatrixClass* handler) : handler_(handler) {
     handler_->initialize_buffers();
-    computeThread_ = std::thread(&MatrixManagerImpl::pollResults, this);
+    //computeThread_ = std::thread(&MatrixManagerImpl::pollResults, this);
   }
 
   ~MatrixManagerImpl() {
@@ -31,68 +31,69 @@ public:
       computeThread_.join();
   }
 
-  kj::Promise<void> submitTask(SubmitTaskContext context) override {
+  kj::Promise<void> submitTask(MatrixManager::Server::SubmitTaskContext context) override {
     auto task = context.getParams().getTask();
-    auto results = context.getResults();
-  
-    // Step 1: Select buffer
+
     int bufferIndex = handler_->select_next_buffer();
     if (bufferIndex == -1) {
-      std::cerr << "No available buffer for new task." << std::endl;
-      return kj::READY_NOW;
+        std::cerr << "No available buffer for new task." << std::endl;
+        return kj::READY_NOW;
     }
-  
+
     int bufferId = bufferIndex / 4;
     int threadId = bufferIndex % 4;
-  
-    // Step 2: Store context so pollResults can complete the response later
     {
       std::lock_guard<std::mutex> lock(contextMapMutex_);
-      contextMap_[bufferIndex] = std::move(context);
+      contextMap_[bufferIndex] = std::make_unique<MatrixManager::Server::SubmitTaskContext>(kj::mv(context));
     }
-  
-    // Step 3: Process the request using buffers
+
     handler_->process_request(task, bufferId, threadId);
-  
-    return kj::READY_NOW;
+
+    return kj::READY_NOW;  // reply will happen later
   }
   
-private:
-  void pollResults() {
-    while (!stop_) {
-      int bufferIndex = handler_->check_response();
-      if (bufferIndex == -1) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        continue;
-      }
-      int bufferId = bufferIndex / 4;
-      int threadId = bufferIndex % 4;
+  kj::Promise<void> pollResultsOnce() {
+    int bufferIndex = handler_->check_response();
 
-      MatrixManager::SubmitTaskContext ctx;
-      {
-        std::lock_guard<std::mutex> lock(contextMapMutex_);
-        auto it = contextMap_.find(bufferIndex);
-        if (it == contextMap_.end()) {
-          std::cerr << "Missing context for buffer index " << bufferIndex << std::endl;
-          continue;
-        }
-        ctx = kj::mv(it->second);
-        contextMap_.erase(it);
-      }
+    if (bufferIndex == -1) {
+      // Wait a bit and try again (non-blocking)
+      return kj::evalLater([this]() {
+        return pollResultsOnce();
+      });
+    }
 
-      auto builder = ctx.getResults<MatrixResult>();
-      handler_->serialize_result(bufferIndex, builder);
+    std::unique_ptr<MatrixManager::Server::SubmitTaskContext> ctx;
 
-      ctx.sendReturn();
-      handler_->add_resource(threadId);
+  {
+    std::lock_guard<std::mutex> lock(contextMapMutex_);
+    auto it = contextMap_.find(bufferIndex);
+    if (it != contextMap_.end()) {
+      ctx = std::move(it->second);
+      contextMap_.erase(it);
     }
   }
 
+  if (ctx) {
+    auto builder = ctx->getResults().initResult();
+    handler_->serialize_result(bufferIndex, builder);
+    // Automatically replies when Promise completes
+  }
+
+  handler_->add_resource(bufferIndex % 4);
+
+  return pollResultsOnce();
+  }
+
+  
+  private:
   MatrixClass* handler_;
   std::thread computeThread_;
   std::atomic<bool> stop_ = false;
   std::mutex contextMapMutex_;
-  std::unordered_map<int, MatrixManager::SubmitTaskContext> contextMap_;
+  //std::unordered_map<int, kj::Own<MatrixManager::Server::SubmitTaskContext>> contextMap_;
+  std::unordered_map<int, std::unique_ptr<MatrixManager::Server::SubmitTaskContext>> contextMap_;
+
+
 };
 
 int main(int argc, char** argv) {
@@ -112,9 +113,14 @@ int main(int argc, char** argv) {
     std::cerr << "Unsupported task type: " << taskType << std::endl;
     return 1;
   }
+  auto serviceImpl = kj::heap<MatrixManagerImpl>(handler.get());
+  auto* serviceRaw = serviceImpl.get();  // save raw pointer before move
 
-  capnp::EzRpcServer server(kj::heap<MatrixManagerImpl>(handler.get()), address);
+  capnp::EzRpcServer server(kj::mv(serviceImpl), address);
   auto& waitScope = server.getWaitScope();
+  serviceRaw->pollResultsOnce();  // safe, as EzRpcServer owns the object now
+
+  // Wait forever so the event loop keeps running
   kj::NEVER_DONE.wait(waitScope);
 
   return 0;

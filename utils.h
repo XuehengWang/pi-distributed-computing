@@ -9,12 +9,19 @@
 #include <cmath>
 #include <algorithm>
 
-#include <capnp/message.h>
+//#include <capnp/message.h>
 #include "matrix.capnp.h"
 
 namespace utils {
 
 enum FunctionID { MULTIPLICATION, ADDITION };
+
+inline FunctionID parseFunctionID(const std::string& str) {
+    if (str == "MULTIPLICATION") return MULTIPLICATION;
+    if (str == "ADDITION") return ADDITION;
+    throw std::invalid_argument("Unknown FunctionID: " + str);
+} 
+
 
 class Submatrix {
 public:
@@ -27,62 +34,24 @@ public:
     bool get_status() const {
         return active;
     }
-
+    Submatrix() = default;
     Submatrix(size_t row, size_t col, size_t s, size_t parent_s)
         : row_start(row), col_start(col), size(s), active(false), original_size(parent_s) {}
 };
 
 struct matrix_t {
     double* data;
-    size_t n;  // matrix size (nxn)
+    size_t n;
 
-    matrix_t(size_t size);
-
-    matrix_t(size_t size, double* raw_data) : n(size) {
-        data = new double[n * n];
-        std::copy(raw_data, raw_data + n * n, data);
-    }
-
+    matrix_t(size_t);
     ~matrix_t();
 
-    matrix_t(matrix_t&& other) noexcept : n(other.n), data(other.data) {
-        other.data = nullptr;
-        other.n = 0;
-    }
-
-    matrix_t& operator=(matrix_t&& other) noexcept {
-        if (this != &other) {
-            delete[] data;
-            n = other.n;
-            data = other.data;
-            other.data = nullptr;
-            other.n = 0;
-        }
-        return *this;
-    }
+    Submatrix track_submatrix(size_t row_start, size_t col_start,
+                              size_t submatrix_size, size_t matrix_size);
 
     void print_matrix() const;
-
-    void get_submatrix_data(const Submatrix& submatrix, double* message, const double* full_data) {
-        if (submatrix.row_start == 0 && submatrix.col_start == 0 && submatrix.size == submatrix.original_size) {
-            std::copy(full_data, full_data + submatrix.size * submatrix.size, message);
-        } else {
-            for (size_t i = 0; i < submatrix.size; ++i) {
-                size_t row_index = submatrix.row_start + i;
-                size_t source_offset = row_index * submatrix.original_size + submatrix.col_start;
-                size_t destination_offset = i * submatrix.size;
-                std::copy(full_data + source_offset, full_data + source_offset + submatrix.size, message + destination_offset);
-            }
-        }
-    }
-
-    Submatrix track_submatrix(size_t row_start, size_t col_start, size_t submatrix_size, size_t matrix_size) {
-        return Submatrix(row_start, col_start, submatrix_size, matrix_size);
-    }
-
     void loadFromCapnp(MatrixTask::Reader reader);
     void serializeToCapnp(MatrixResult::Builder builder) const;
-    
 };
 
 struct task_node_t {
