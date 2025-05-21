@@ -21,6 +21,7 @@ using matrixclass::MatrixClass;
 class MatrixManagerImpl final : public MatrixManager::Server {
 public:
   MatrixManagerImpl(MatrixClass* handler) : handler_(handler) {
+    std::cout << "MatrixManagerImpl constructor" << std::endl;
     handler_->initialize_buffers();
     //computeThread_ = std::thread(&MatrixManagerImpl::pollResults, this);
   }
@@ -31,7 +32,14 @@ public:
       computeThread_.join();
   }
 
+  kj::Promise<void> ping(MatrixManager::Server::PingContext context) override {
+    std::cout << "Ping received" << std::endl;
+    context.getResults().setOk(true);
+    return kj::READY_NOW;
+  }
+
   kj::Promise<void> submitTask(MatrixManager::Server::SubmitTaskContext context) override {
+    std::cout << "SubmitTask received" << std::endl;
     auto task = context.getParams().getTask();
 
     int bufferIndex = handler_->select_next_buffer();
@@ -53,8 +61,9 @@ public:
   }
   
   kj::Promise<void> pollResultsOnce() {
+    std::cout << "entering polling loop" << std::endl;
     int bufferIndex = handler_->check_response();
-
+    std::cout << "Buffer index: " << bufferIndex << std::endl;
     if (bufferIndex == -1) {
       // Wait a bit and try again (non-blocking)
       return kj::evalLater([this]() {
@@ -113,15 +122,29 @@ int main(int argc, char** argv) {
     std::cerr << "Unsupported task type: " << taskType << std::endl;
     return 1;
   }
-  auto serviceImpl = kj::heap<MatrixManagerImpl>(handler.get());
-  auto* serviceRaw = serviceImpl.get();  // save raw pointer before move
 
-  capnp::EzRpcServer server(kj::mv(serviceImpl), address);
-  auto& waitScope = server.getWaitScope();
-  serviceRaw->pollResultsOnce();  // safe, as EzRpcServer owns the object now
+  try {
+    auto serviceImpl = kj::heap<MatrixManagerImpl>(handler.get());
+    auto* serviceRaw = serviceImpl.get();  // save raw pointer before move
 
+    //capnp::EzRpcServer server(kj::mv(serviceImpl), address, 50052);
+    capnp::EzRpcServer server(kj::mv(serviceImpl), "*", 50052);
+    std::cout << "[SERVER] Server is running and waiting for client messages at " << address << std::endl;
+
+    auto& waitScope = server.getWaitScope();
+    serviceRaw->pollResultsOnce();
+    std::cout << "[SERVER] Polling loop started." << std::endl;
+
+    kj::NEVER_DONE.wait(waitScope);
+
+} catch (const kj::Exception& e) {
+    std::cerr << "[ERROR] Server failed to bind or crashed: " 
+              << e.getDescription().cStr()
+              << " (" << e.getFile() << ":" << e.getLine() << ")" << std::endl;
+    return 1;
+}
   // Wait forever so the event loop keeps running
-  kj::NEVER_DONE.wait(waitScope);
+  //kj::NEVER_DONE.wait(waitScope);
 
   return 0;
 }
