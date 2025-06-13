@@ -16,7 +16,7 @@ ResourceScheduler::~ResourceScheduler() {
 //for first time joining the list, resource_count is initialized to 8
 //insert to head
 void ResourceScheduler::add_entry_head(int32_t rpi_id) {
-    auto* new_entry = new resource_t(3, rpi_id);
+    auto* new_entry = new resource_t(2, rpi_id);
     std::lock_guard<std::mutex> lock(list_lock_);
 
     if (!head) {
@@ -32,12 +32,15 @@ void ResourceScheduler::add_entry_head(int32_t rpi_id) {
 int32_t ResourceScheduler::consume_resource() {
     std::unique_lock<std::mutex> lock(list_lock_);
     while (!head) {
+        //std::cout << "ResourceScheduler: waiting for resources..." << std::endl;
         list_cv_.wait(lock, [this] { return head; });
         // TODO: wait here?
         // return -1;
     } 
     //else {
+        //std::cout << "ResourceScheduler: consuming resource from head." << std::endl;
         head->resource_count--;
+        std::cout << "ResourceScheduler: consumed resource, remaining count: " << head->resource_count << "for: "<< std::endl;
         int32_t consumed_id = head->rpi_id;
 
         if (head->resource_count == 0) {

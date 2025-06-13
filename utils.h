@@ -71,7 +71,7 @@ struct task_node_t {
     task_node_t* right_child;
 
     task_node_t(FunctionID ops, size_t n, size_t parent_n)
-        : assigned_rpi(-1), task_id(-1), ops(ops), n(n),
+        : assigned_rpi(-2), task_id(-2), ops(ops), n(n),
           left(0, 0, n, parent_n), right(0, 0, n, parent_n), result(0, 0, n, parent_n),
           left_matrix(nullptr), right_matrix(nullptr), result_matrix(nullptr),
           parent(nullptr), left_child(nullptr), right_child(nullptr) {}

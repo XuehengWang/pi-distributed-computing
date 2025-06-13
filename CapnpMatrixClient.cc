@@ -1,58 +1,89 @@
 #include "CapnpMatrixClient.h"
-#include <kj/debug.h>  // for KJ_REQUIRE or KJ_ASSERT
+#include <iostream>
+#include <cstring>  // for memcpy
 
-CapnpMatrixClient::CapnpMatrixClient(capnp::EzRpcClient& client,
+CapnpMatrixClient::CapnpMatrixClient(MatrixManager::Client stub,
+                                     int clientId,
                                      std::queue<int>& resultQueue,
-                                     std::condition_variable& resultCv,
-                                     std::mutex& resultMutex,
-                                     int submatrixSize)
-    : stub_(client.getMain<MatrixManager>()),
-      waitScope_(client.getWaitScope()),
-      resultQueue_(resultQueue),
-      resultCv_(resultCv),
-      resultMutex_(resultMutex),
-      submatrixSize_(submatrixSize) {}
+                                     std::mutex& resultLock,
+                                     std::condition_variable& resultCv)
+  : stub_(stub),
+    clientId_(clientId),
+    busy_(false),
+    resultQueue_(resultQueue),
+    resultLock_(resultLock),
+    resultCv_(resultCv) {}
 
-void CapnpMatrixClient::submitTask(utils::task_node_t* task) {
+bool CapnpMatrixClient::isBusy() const {
+  return busy_;
+}
+
+void CapnpMatrixClient::markFree() {
+  busy_ = false;
+}
+
+int CapnpMatrixClient::getClientId() const {
+  return clientId_;
+}
+
+MatrixManager::Client& CapnpMatrixClient::getStub() {
+  return stub_;
+}
+
+void CapnpMatrixClient::submitTask(utils::task_node_t* task, kj::WaitScope& waitScope) {
+  if (busy_) {
+    std::cerr << "[Client " << clientId_ << "] Busy, skipping task.\n";
+    return;
+  }
+
+  busy_ = true;
+
   auto req = stub_.submitTaskRequest();
+  auto taskMsg = req.initTask();
 
-  auto matrixTask = req.initTask();
-  matrixTask.setTaskId(task->task_id);
-  matrixTask.setOps("MULTIPLICATION");  // use the same strings as your enum parser
-  matrixTask.setN(task->n);
+  taskMsg.setTaskId(task->task_id);
+  taskMsg.setOps("MULTIPLICATION");
+  taskMsg.setN(task->n);
 
-  const double* data = task->left_matrix->data;
-  kj::ArrayPtr<const capnp::byte> inputA(
-      reinterpret_cast<const capnp::byte*>(data),
-      sizeof(double) * task->n * task->n);
-  matrixTask.setInputA(inputA);
+  taskMsg.setInputA(kj::arrayPtr(
+      reinterpret_cast<const capnp::byte*>(task->left_matrix->data),
+      sizeof(double) * task->n * task->n));
 
-  data = task->right_matrix->data;
-  kj::ArrayPtr<const capnp::byte> inputB(
-      reinterpret_cast<const capnp::byte*>(data),
-      sizeof(double) * task->n * task->n);
-  matrixTask.setInputB(inputB);
+  taskMsg.setInputB(kj::arrayPtr(
+      reinterpret_cast<const capnp::byte*>(task->right_matrix->data),
+      sizeof(double) * task->n * task->n));
 
-  req.send().then([&, task](capnp::Response<MatrixManager::SubmitTaskResults> result) {
-    const auto& r = result.getResult();
-    std::lock_guard<std::mutex> lock(resultMutex_);
-    task->task_id = r.getTaskId();
-    task->n = r.getN();
+  try {
+    std::cout << "[Client " << clientId_ << "] Sending task ID: " << task->task_id << std::endl;
+    auto resp = req.send().wait(waitScope);
+    std::cout << "[Client " << clientId_ << "] Response received.\n";
 
-    const auto resultData = r.getResult();
-    size_t bytes = resultData.size();
-    size_t expectedBytes = sizeof(double) * task->n * task->n;
+    if (!resp.hasResult()) {
+      std::cerr << "[Client " << clientId_ << "] No result in response.\n";
+      busy_ = false;
+      return;
+    }
 
-    KJ_REQUIRE(bytes == expectedBytes, "Unexpected result data size");
+    auto resultMsg = resp.getResult();
+    std::cout << "[Client " << clientId_ << "] Got result for taskId: "
+              << resultMsg.getTaskId() << std::endl;
 
-    // Allocate a new matrix and copy data safely
+    // Allocate and copy result matrix
     task->result_matrix = new utils::matrix_t(task->n);
-    memcpy(task->result_matrix->data, resultData.begin(), bytes);
+    memcpy(task->result_matrix->data,
+           resultMsg.getResult().begin(),
+           sizeof(double) * task->n * task->n);
 
-    task->result = utils::Submatrix(0, 0, task->n, task->n);
-    task->result.active = true;
+    {
+      std::lock_guard<std::mutex> lock(resultLock_);
+      resultQueue_.push(task->task_id);
+    }
+    resultCv_.notify_one();
 
-    resultQueue_.push(task->task_id);
-    resultCv_.notify_all();
-  }).wait(waitScope_);
+  } catch (const kj::Exception& e) {
+    std::cerr << "[Client " << clientId_ << "] Exception in submitTask: "
+              << e.getDescription().cStr() << std::endl;
+  }
+
+  markFree();
 }

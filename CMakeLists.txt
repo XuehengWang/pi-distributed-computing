@@ -27,48 +27,6 @@ find_package(CapnProto CONFIG REQUIRED)
 message(STATUS "CapnProto found: ${CapnProto_FOUND}")
 
 # ----------------------------
-# Cap’n Proto (manual integration using pkg-config)
-# ----------------------------
-
-# find_package(PkgConfig REQUIRED)
-# pkg_check_modules(CAPNP REQUIRED capnp)
-# pkg_check_modules(CAPNP_RPC REQUIRED capnp-rpc)
-
-# # Set Cap’n Proto compiler
-# find_program(CAPNP_COMPILER capnp)
-# if(NOT CAPNP_COMPILER)
-#   message(FATAL_ERROR "capnp compiler not found. Please install Cap'n Proto or add it to your PATH.")
-# endif()
-# message(STATUS "Using Cap’n Proto compiler: ${CAPNP_COMPILER}")
-
-# # Add Cap’n Proto include and lib dirs globally
-# include_directories(${CAPNP_INCLUDE_DIRS} ${CAPNP_RPC_INCLUDE_DIRS})
-# link_directories(${CAPNP_LIBRARY_DIRS} ${CAPNP_RPC_LIBRARY_DIRS})
-
-# # ----------------------------
-# # Cap’n Proto Schema
-# # ----------------------------
-
-# set(SCHEMA_FILE ${CMAKE_SOURCE_DIR}/protos/matrix.capnp)
-# set(GENERATED_DIR ${CMAKE_BINARY_DIR}/protos)
-# set(GENERATED_SRC ${GENERATED_DIR}/matrix.capnp.c++)
-# set(GENERATED_HDR ${GENERATED_DIR}/matrix.capnp.h)
-
-# file(MAKE_DIRECTORY ${GENERATED_DIR})
-
-# add_custom_command(
-#   OUTPUT ${GENERATED_SRC} ${GENERATED_HDR}
-#   COMMAND ${CAPNP_COMPILER} compile -oc++:${GENERATED_DIR} --src-prefix=${CMAKE_SOURCE_DIR}/protos ${SCHEMA_FILE}
-#   DEPENDS ${SCHEMA_FILE}
-#   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/protos
-#   COMMENT "Generating Cap'n Proto sources..."
-# )
-
-# add_custom_target(generate_capnp ALL DEPENDS ${GENERATED_SRC} ${GENERATED_HDR})
-
-# set(CAPNP_SRCS ${GENERATED_SRC})
-# set(CAPNP_HDRS ${GENERATED_HDR})
-
 set(CAPNP_SRCS ${CMAKE_SOURCE_DIR}/protos/matrix.capnp.c++)
 set(CAPNP_HDRS ${CMAKE_SOURCE_DIR}/protos/matrix.capnp.h)
 # ----------------------------
@@ -93,15 +51,10 @@ target_include_directories(utils
 
 target_link_libraries(utils
   PRIVATE
-    #mult_grpc_proto
     ${_PROTOBUF_LIBPROTOBUF}
     CapnProto::capnp
     CapnProto::capnp-rpc
 )
-# if(TARGET CapnProto::capnp-rpc)
-#   target_link_libraries(utils PRIVATE CapnProto::capnp-rpc)
-# endif()
-
 # task_handler
 add_library(task_handler
   task_handler.h
@@ -120,6 +73,7 @@ target_link_libraries(task_handler
   ${_PROTOBUF_LIBPROTOBUF}
 )
 
+
 # resource_scheduler
 add_library(resource_scheduler STATIC
   resource_scheduler.cc
@@ -129,6 +83,17 @@ target_link_libraries(resource_scheduler
   utils
   ${_PROTOBUF_LIBPROTOBUF}
 )
+
+# add_library(matrix_worker_impl
+#   MatrixWorker.cc
+#   MaxtrixWorker.h
+# )
+# target_include_directories(matrix_worker_impl
+#   PRIVATE
+#     ${CMAKE_SOURCE_DIR}
+#     ${CMAKE_SOURCE_DIR}/protos
+#     ${CMAKE_CURRENT_BINARY_DIR}/protos
+# )
 
 add_library(capnp_matrix_client
   CapnpMatrixClient.cc
