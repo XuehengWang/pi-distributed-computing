@@ -29,6 +29,7 @@ public:
     virtual int check_response() = 0;
     virtual void add_resource(int thread_id) = 0;
     virtual void initialize_buffers() = 0;
+    virtual int get_task_id(int buffer_id) = 0;  // Helper to get task ID from buffer
 
     // Cap'n Proto specific extensions
     virtual void process_request(MatrixTask::Reader taskMsg, int buffer_id, int thread_id) = 0;

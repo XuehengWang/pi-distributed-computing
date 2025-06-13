@@ -4,18 +4,16 @@
 #endif
 
 #include "matrix_handler.h"
-//#include <capnp/message.h>
-//#include <capnp/serialize.h>
-//#include "matrix.capnp.h"
 
 namespace matrixclass {
 
 MatrixClass::MatrixClass(uint32_t n)
         : n_(n), tasks_pending(0) {
-    for (int i = 0; i < 4; ++i) {
-        resources_[i] = 2;
+    for (int i = 0; i < 1; ++i) {
+        resources_[i] = 3;
         last_buffer_[i] = 1;
     }
+    initialize_buffers();
     initialize_threads();
 }
 
@@ -27,37 +25,38 @@ int MatrixClass::select_next_buffer() {
     std::lock_guard<std::mutex> lock(resource_lock_);
     uint32_t max_resource = resources_[0];
     int max_thread_id = 0;
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 1; ++i) {
         if (resources_[i] > max_resource) {
             max_resource = resources_[i];
             max_thread_id = i;
         }
     }
     if (max_resource <= 0) {
+        std::cerr << "No available resources for any thread." << std::endl;
         return -1;
     } else {
         resources_[max_thread_id]--;
         last_buffer_[max_thread_id]++;
-        uint32_t select_buffer = last_buffer_[max_thread_id] % 2;
-        return select_buffer * 4 + max_thread_id;
+        uint32_t select_buffer = last_buffer_[max_thread_id] % 3;
+        return select_buffer + max_thread_id;
     }
 }
 
 void* MatrixClass::get_buffer_request(int buffer_id, int thread_id) {
-    return static_cast<void*>(buffers_[buffer_id * 4 + thread_id].data.inputA);
+    return static_cast<void*>(buffers_[buffer_id + thread_id].data.inputA);
 }
 
 void* MatrixClass::get_buffer_response(int buffer_id, int thread_id) {
-    return static_cast<void*>(buffers_[buffer_id * 4 + thread_id].data.result);
+    return static_cast<void*>(buffers_[buffer_id + thread_id].data.result);
 }
 
 void MatrixClass::add_resource(int thread_id) {
     std::lock_guard<std::mutex> lock(resource_lock_);
-    resources_[thread_id] += 1;
+    resources_[0] += 1;
 }
 
 void MatrixClass::initialize_buffers() {
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 3; i++) {
         matrix_buffer_t &buffer = buffers_[i];
         buffer.data.n = n_;
         buffer.data.inputA = new double[n_ * n_];
@@ -66,31 +65,56 @@ void MatrixClass::initialize_buffers() {
     }
 }
 
-void MatrixClass::process_request(MatrixTask::Reader taskMsg, int buffer_id, int thread_id) {
-    matrix_buffer_t &buffer = buffers_[buffer_id * 4 + thread_id];
-    buffer_id = buffer_id * 4 + thread_id;
+int MatrixClass::get_task_id(int buffer_id) {
+    return buffers_[buffer_id].data.task_id;
+}
 
+// void MatrixClass::process_request(MatrixTask::Reader taskMsg, int buffer_id, int thread_id) {
+//     matrix_buffer_t &buffer = buffers_[buffer_id + thread_id];
+//     buffer_id = buffer_id + thread_id;
+
+//     if (taskMsg.getTaskId() == -1) {
+//         stop_threads();
+//         return;
+//     }
+
+//     buffer.data.task_id = taskMsg.getTaskId();
+//     std::string opStr = taskMsg.getOps().cStr();
+//     buffer.data.ops = utils::parseFunctionID(opStr);
+
+//     auto inputA = taskMsg.getInputA();
+//     auto inputB = taskMsg.getInputB();
+
+//     KJ_IASSERT((inputA.size()/8) == n_ * n_);
+//     KJ_IASSERT((inputB.size()/8) == n_ * n_);
+//     memcpy(buffer.data.inputA, inputA.begin(), inputA.size());
+//     memcpy(buffer.data.inputB, inputB.begin(), inputB.size());
+
+//     {
+//         std::unique_lock<std::mutex> lock(input_locks_[0]);
+//         input_queue_[0].push(buffer_id);
+//     }
+//     input_cv_[0].notify_one();
+// }
+
+void MatrixClass::process_request(MatrixTask::Reader taskMsg, int buffer_id, int thread_id_dummy) {
+    int thread_id = buffer_id / 3;
     if (taskMsg.getTaskId() == -1) {
         stop_threads();
         return;
     }
-
+    matrix_buffer_t &buffer = buffers_[buffer_id];
     buffer.data.task_id = taskMsg.getTaskId();
-    std::string opStr = taskMsg.getOps().cStr();
-    buffer.data.ops = utils::parseFunctionID(opStr);
+    buffer.data.ops = utils::parseFunctionID(taskMsg.getOps().cStr());
 
-    auto inputA = taskMsg.getInputA();
-    auto inputB = taskMsg.getInputB();
-    KJ_IASSERT(inputA.size() == n_ * n_);
-    KJ_IASSERT(inputB.size() == n_ * n_);
-    memcpy(buffer.data.inputA, inputA.begin(), inputA.size());
-    memcpy(buffer.data.inputB, inputB.begin(), inputB.size());
+    memcpy(buffer.data.inputA, taskMsg.getInputA().begin(), taskMsg.getInputA().size());
+    memcpy(buffer.data.inputB, taskMsg.getInputB().begin(), taskMsg.getInputB().size());
 
     {
-        std::unique_lock<std::mutex> lock(input_locks_[0]);
-        input_queue_[0].push(buffer_id);
+        std::unique_lock<std::mutex> lock(input_locks_[thread_id]);
+        input_queue_[thread_id].push(buffer_id);
     }
-    input_cv_[0].notify_one();
+    input_cv_[thread_id].notify_one();
 }
 
 int MatrixClass::check_response() {
@@ -102,7 +126,8 @@ int MatrixClass::check_response() {
             output_cv_.wait(output_lock, [this] { return tasks_pending > 0 || stop_flag_; });
         }
         result = &(output_queue_.front());
-        all_id = result->buffer_id;
+        all_id = result->buffer_id + result->thread_id;
+
         output_queue_.pop();
         tasks_pending--;
     }
@@ -110,10 +135,13 @@ int MatrixClass::check_response() {
 }
 
 void MatrixClass::serialize_result(int buffer_id, MatrixResult::Builder& resultBuilder) {
+   // std::cout << "Serializing result for buffer ID: " << buffer_id << std::endl;
     matrix_buffer_t& buffer = buffers_[buffer_id];
     resultBuilder.setTaskId(buffer.data.task_id);
     resultBuilder.setN(buffer.data.n);
-    auto outputList = resultBuilder.initResult(buffer.data.n * buffer.data.n);
+    auto outputList = resultBuilder.initResult(sizeof(double) * buffer.data.n * buffer.data.n);
+    KJ_IASSERT(buffer.data.result != nullptr, "buffer.data.result is null");
+    int n = buffer.data.n;
     memcpy(outputList.begin(), buffer.data.result, sizeof(double) * buffer.data.n * buffer.data.n);
 }
 
@@ -121,8 +149,8 @@ void MatrixClass::initialize_threads() {
     for (uint32_t tid = 0; tid < 1; ++tid) {
         compute_threads_.emplace_back([this, tid]() {
             bli_init();
-            bli_thread_set_num_threads(4);
-            bli_thread_set_ways(1, 1, 4, 1, 1);
+            bli_thread_set_num_threads(3);
+            bli_thread_set_ways(1, 1, 3, 1, 1);
             double alpha = 1.0, beta = 0.0;
             int count = 0, n = 0;
             long long start_time, end_time;
@@ -140,7 +168,7 @@ void MatrixClass::initialize_threads() {
                 }
 
                 if (count == 0) {
-                    std::this_thread::sleep_for(std::chrono::seconds(2));
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
                     auto now = std::chrono::high_resolution_clock::now();
                     start_time = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
                 }
@@ -153,6 +181,7 @@ void MatrixClass::initialize_threads() {
                         working_buffer.data.result[i] = working_buffer.data.inputA[i] + working_buffer.data.inputB[i];
                     }
                 } else {
+                    std::cout << "Performing matrix multiplication for buffer ID: " << buffer_id << std::endl;
                     bli_dgemm(BLIS_NO_TRANSPOSE, BLIS_NO_TRANSPOSE, n, n, n,
                               &alpha, working_buffer.data.inputA, 1, n,
                                        working_buffer.data.inputB, 1, n,
@@ -184,7 +213,7 @@ void MatrixClass::initialize_threads() {
 
 void MatrixClass::stop_threads() {
     stop_flag_ = true;
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 1; i++) {
         input_cv_[i].notify_all();
     }
     for (auto& thread : compute_threads_) {

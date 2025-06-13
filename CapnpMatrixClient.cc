@@ -14,45 +14,45 @@ CapnpMatrixClient::CapnpMatrixClient(capnp::EzRpcClient& client,
       submatrixSize_(submatrixSize) {}
 
 void CapnpMatrixClient::submitTask(utils::task_node_t* task) {
-  auto req = stub_.submitTaskRequest();
+  // auto req = stub_.submitTaskRequest();
 
-  auto matrixTask = req.initTask();
-  matrixTask.setTaskId(task->task_id);
-  matrixTask.setOps("MULTIPLICATION");  // use the same strings as your enum parser
-  matrixTask.setN(task->n);
+  // auto matrixTask = req.initTask();
+  // matrixTask.setTaskId(task->task_id);
+  // matrixTask.setOps("MULTIPLICATION");  // use the same strings as your enum parser
+  // matrixTask.setN(task->n);
 
-  const double* data = task->left_matrix->data;
-  kj::ArrayPtr<const capnp::byte> inputA(
-      reinterpret_cast<const capnp::byte*>(data),
-      sizeof(double) * task->n * task->n);
-  matrixTask.setInputA(inputA);
+  // const double* data = task->left_matrix->data;
+  // kj::ArrayPtr<const capnp::byte> inputA(
+  //     reinterpret_cast<const capnp::byte*>(data),
+  //     sizeof(double) * task->n * task->n);
+  // matrixTask.setInputA(inputA);
 
-  data = task->right_matrix->data;
-  kj::ArrayPtr<const capnp::byte> inputB(
-      reinterpret_cast<const capnp::byte*>(data),
-      sizeof(double) * task->n * task->n);
-  matrixTask.setInputB(inputB);
+  // data = task->right_matrix->data;
+  // kj::ArrayPtr<const capnp::byte> inputB(
+  //     reinterpret_cast<const capnp::byte*>(data),
+  //     sizeof(double) * task->n * task->n);
+  // matrixTask.setInputB(inputB);
 
-  req.send().then([&, task](capnp::Response<MatrixManager::SubmitTaskResults> result) {
-    const auto& r = result.getResult();
-    std::lock_guard<std::mutex> lock(resultMutex_);
-    task->task_id = r.getTaskId();
-    task->n = r.getN();
+  // req.send().then([&, task](capnp::Response<MatrixManager::SubmitTaskResults> result) {
+  //   const auto& r = result.getResult();
+  //   std::lock_guard<std::mutex> lock(resultMutex_);
+  //   task->task_id = r.getTaskId();
+  //   task->n = r.getN();
 
-    const auto resultData = r.getResult();
-    size_t bytes = resultData.size();
-    size_t expectedBytes = sizeof(double) * task->n * task->n;
+  //   const auto resultData = r.getResult();
+  //   size_t bytes = resultData.size();
+  //   size_t expectedBytes = sizeof(double) * task->n * task->n;
 
-    KJ_REQUIRE(bytes == expectedBytes, "Unexpected result data size");
+  //   KJ_REQUIRE(bytes == expectedBytes, "Unexpected result data size");
 
-    // Allocate a new matrix and copy data safely
-    task->result_matrix = new utils::matrix_t(task->n);
-    memcpy(task->result_matrix->data, resultData.begin(), bytes);
+  //   // Allocate a new matrix and copy data safely
+  //   task->result_matrix = new utils::matrix_t(task->n);
+  //   memcpy(task->result_matrix->data, resultData.begin(), bytes);
 
-    task->result = utils::Submatrix(0, 0, task->n, task->n);
-    task->result.active = true;
+  //   task->result = utils::Submatrix(0, 0, task->n, task->n);
+  //   task->result.active = true;
 
-    resultQueue_.push(task->task_id);
-    resultCv_.notify_all();
-  }).wait(waitScope_);
+  //   resultQueue_.push(task->task_id);
+  //   resultCv_.notify_all();
+  // }).wait(waitScope_);
 }
