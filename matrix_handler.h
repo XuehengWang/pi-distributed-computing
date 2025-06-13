@@ -43,6 +43,7 @@ public:
     int check_response() override;
     void add_resource(int thread_id) override;
     void initialize_buffers() override;
+    int get_task_id(int buffer_id) override;
 
     void process_request(MatrixTask::Reader taskMsg, int buffer_id, int thread_id);
     void serialize_result(int buffer_id, MatrixResult::Builder& resultBuilder);

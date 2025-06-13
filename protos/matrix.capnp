@@ -7,6 +7,7 @@ interface MatrixWorker {
 interface MatrixManager {
   start @0 (listener :MatrixWorker);
   submitTask @1 (task :MatrixTask) -> (result :MatrixResult);
+  ping @2 () -> (ok :Bool);  # Health check
 }
 
 struct MatrixTask {
